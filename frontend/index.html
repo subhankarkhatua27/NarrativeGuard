@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NarrativeGuard</title>
+  <style>
+    body { font-family: system-ui, sans-serif; display: grid; place-items: center; min-height: 100vh; margin: 0; }
+    #status { font-size: 1.5rem; }
+  </style>
+</head>
+<body>
+  <div>
+    <h1>NarrativeGuard</h1>
+    <p id="status">Checking API...</p>
+  </div>
+  <script>
+    const API_URL = " https://narrativeguard-2.onrender.com";
+    const el = document.getElementById("status");
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 60000); // free tier can take ~50s to wake
+    fetch(`${API_URL}/health`, { signal: controller.signal })
+      .then(r => r.json())
+      .then(d => { el.textContent = d.status === "ok" ? "API ok" : "API error"; })
+      .catch(() => { el.textContent = "API unreachable"; });
+  </script>
+</body>
+</html>
