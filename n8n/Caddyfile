@@ -1,0 +1,20 @@
+:8080 {
+    @webhook {
+        method POST
+        path /webhook/*
+    }
+    @health {
+        method GET
+        path /healthz
+    }
+
+    handle @webhook {
+        reverse_proxy n8n:5678
+    }
+    handle @health {
+        reverse_proxy n8n:5678
+    }
+    handle {
+        respond "Not found" 404
+    }
+}

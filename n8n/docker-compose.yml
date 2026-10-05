@@ -1,0 +1,30 @@
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5678:5678"   # editor reachable from this laptop only
+    environment:
+      - WEBHOOK_URL=https://${NGROK_DOMAIN}/
+      - N8N_PROXY_HOPS=2          # ngrok and Caddy are both in front of n8n
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - GENERIC_TIMEZONE=Asia/Kolkata
+      - TZ=Asia/Kolkata
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=72
+      - EXECUTIONS_DATA_PRUNE_MAX_COUNT=2000
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - n8n
+    ports:
+      - "127.0.0.1:8080:8080"   # ngrok will point here
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+
+volumes:
+  n8n_data:
