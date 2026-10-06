@@ -117,31 +117,39 @@ async def add_event(job_id: uuid.UUID, ev: Event):
     return {"ok": True}
 
 
+
+
+
+import logging
+logger = logging.getLogger("narrativeguard")   # put this near the top of main.py, with the other imports
+
+
 @app.post("/internal/jobs/{job_id}/result", dependencies=[Depends(check_secret)])
 async def set_result(job_id: uuid.UUID, result: dict):
     conn = await connect()
     try:
         status = await conn.execute(
-            """update jobs set result=$2::jsonb, status='done',85bb60e4-b0aa-4038-970a-c19eb2145e80
+            """update jobs set result=$2::jsonb, status='done',
                completed_at=now(), updated_at=now() where id=$1""",
             job_id, json.dumps(result),
         )
         if status == "UPDATE 0":
             raise HTTPException(status_code=404, detail="unknown job")
-        # remember the verdict for 7 days (jobs without a text_hash, e.g. test-job, are skipped)
-        await conn.execute(
-            """insert into verdict_cache (claim_hash, claim_text, lang, verdict, expires_at)
-               select text_hash, input_text, lang, $2::jsonb, now() + interval '7 days'
-               from jobs where id = $1 and text_hash is not null
-               on conflict (claim_hash) do update
-               set verdict = excluded.verdict, claim_text = excluded.claim_text,
-                   expires_at = excluded.expires_at""",
-            job_id, json.dumps(result),
-        )
+        try:
+            await conn.execute(
+                """insert into verdict_cache (claim_hash, claim_text, lang, verdict, expires_at)
+                   select text_hash, input_text, lang, $2::jsonb, now() + interval '7 days'
+                   from jobs where id = $1 and text_hash is not null
+                   on conflict (claim_hash) do update
+                   set verdict = excluded.verdict, claim_text = excluded.claim_text,
+                       expires_at = excluded.expires_at""",
+                job_id, json.dumps(result),
+            )
+        except Exception:
+            logger.exception("verdict cache write failed for job %s", job_id)
     finally:
         await conn.close()
     return {"ok": True}
-
 
 @app.get("/jobs/{job_id}")          # legacy Phase 0 route; remove at end of Phase 2
 async def get_job(job_id: uuid.UUID):
