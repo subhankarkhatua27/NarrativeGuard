@@ -122,7 +122,7 @@ async def set_result(job_id: uuid.UUID, result: dict):
     conn = await connect()
     try:
         status = await conn.execute(
-            """update jobs set result=$2::jsonb, status='done',
+            """update jobs set result=$2::jsonb, status='done',85bb60e4-b0aa-4038-970a-c19eb2145e80
                completed_at=now(), updated_at=now() where id=$1""",
             job_id, json.dumps(result),
         )
