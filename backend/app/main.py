@@ -2,6 +2,7 @@ import hmac
 import json
 import os
 import uuid
+from contextlib import asynccontextmanager
 
 import asyncpg
 import httpx
@@ -9,10 +10,21 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from routers.jobs import router
 
 load_dotenv()
-app = FastAPI()
+
+from app.db import db_url, init_pool, close_pool   # after load_dotenv
+from app.routers.jobs import router
+
+
+@asynccontextmanager
+async def lifespan(app):
+    await init_pool()
+    yield
+    await close_pool()
+
+
+app = FastAPI(lifespan=lifespan)
 app.include_router(router)
 
 origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
@@ -22,10 +34,6 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
-
-
-def db_url():
-    return os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
 
 
 async def connect():
@@ -125,7 +133,7 @@ async def set_result(job_id: uuid.UUID, result: dict):
     return {"ok": True}
 
 
-@app.get("/jobs/{job_id}")
+@app.get("/jobs/{job_id}")          # legacy Phase 0 route; remove at end of Phase 2
 async def get_job(job_id: uuid.UUID):
     conn = await connect()
     try:
