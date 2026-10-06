@@ -126,10 +126,20 @@ async def set_result(job_id: uuid.UUID, result: dict):
                completed_at=now(), updated_at=now() where id=$1""",
             job_id, json.dumps(result),
         )
+        if status == "UPDATE 0":
+            raise HTTPException(status_code=404, detail="unknown job")
+        # remember the verdict for 7 days (jobs without a text_hash, e.g. test-job, are skipped)
+        await conn.execute(
+            """insert into verdict_cache (claim_hash, claim_text, lang, verdict, expires_at)
+               select text_hash, input_text, lang, $2::jsonb, now() + interval '7 days'
+               from jobs where id = $1 and text_hash is not null
+               on conflict (claim_hash) do update
+               set verdict = excluded.verdict, claim_text = excluded.claim_text,
+                   expires_at = excluded.expires_at""",
+            job_id, json.dumps(result),
+        )
     finally:
         await conn.close()
-    if status == "UPDATE 0":
-        raise HTTPException(status_code=404, detail="unknown job")
     return {"ok": True}
 
 

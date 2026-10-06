@@ -1,6 +1,7 @@
 import asyncio
 import json
 import uuid
+from app import cache
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -15,8 +16,9 @@ POLL_SECONDS = 0.7
 HEARTBEAT_SECONDS = 15
 
 class CheckIn(BaseModel):
-    text: str = Field(min_length=1, max_length=20000)   # hard guard only; intake gives the friendly error
+    text: str = Field(min_length=1, max_length=20000)
     lang: str | None = None
+    force: bool = False          # "Check anyway" after a seen-before card
 
 
 
@@ -37,15 +39,39 @@ async def create_check(body: CheckIn):
     except IntakeError as e:
         raise HTTPException(422, str(e))
 
-    job_id = uuid.uuid4()
+    base = {"lang": intake.lang, "redactions": intake.redactions}
+
     async with db.get_pool().acquire() as c:
+        # 1. exact repeat: instant, free, exempt from all limits
+        hit = await cache.exact_hit(c, intake.text_hash)
+        if hit:
+            job_id = uuid.uuid4()
+            await c.execute(
+                """insert into jobs (id, input_text, lang, status, text_hash, result, completed_at)
+                   values ($1, $2, $3, 'done', $4, $5::jsonb, now())""",
+                job_id, intake.text, intake.lang, intake.text_hash, hit["verdict"],
+            )
+            await c.execute(
+                "update verdict_cache set hit_count = hit_count + 1 where id = $1", hit["id"]
+            )
+            return {**base, "job_id": str(job_id), "from_cache": True,
+                    "result": json.loads(hit["verdict"])}
+
+        # 2. near-repeat or an existing fact-check: show it first, unless the user insists
+        seen = await cache.seen_before(c, intake.text)
+        if seen["found"] and not body.force:
+            return {**base, "job_id": None, "from_cache": False, "seen_before": seen}
+
+        # 2.4 limits and 2.5 n8n gate go here, before the insert
+        job_id = uuid.uuid4()
         await c.execute(
             """insert into jobs (id, input_text, lang, status, text_hash)
                values ($1, $2, $3, 'queued', $4)""",
             job_id, intake.text, intake.lang, intake.text_hash,
         )
-    # 2.3 cache, 2.4 limits, 2.5 gate + n8n dispatch plug in here
-    return {"job_id": str(job_id), "lang": intake.lang, "redactions": intake.redactions}
+    # 2.5 n8n dispatch goes here
+    return {**base, "job_id": str(job_id), "from_cache": False,
+            "seen_before": seen if seen["found"] else None}
 
 @router.get("/jobs/{job_id}")
 async def get_job(job_id: uuid.UUID):
