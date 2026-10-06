@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from intake import prepare, IntakeError
 
 import app.db as db
 
@@ -13,10 +14,11 @@ router = APIRouter(prefix="/api")
 POLL_SECONDS = 0.7
 HEARTBEAT_SECONDS = 15
 
-
 class CheckIn(BaseModel):
-    text: str = Field(min_length=1, max_length=5000)
-    lang: str = "en"
+    text: str = Field(min_length=1, max_length=20000)   # hard guard only; intake gives the friendly error
+    lang: str | None = None
+
+
 
 
 def _j(v):
@@ -30,15 +32,20 @@ def _sse(event: str, data, id: int | None = None) -> str:
 
 @router.post("/check")
 async def create_check(body: CheckIn):
+    try:
+        intake = prepare(body.text, body.lang)
+    except IntakeError as e:
+        raise HTTPException(422, str(e))
+
     job_id = uuid.uuid4()
     async with db.get_pool().acquire() as c:
         await c.execute(
-            "insert into jobs (id, input_text, lang, status) values ($1, $2, $3, 'queued')",
-            job_id, body.text, body.lang,
+            """insert into jobs (id, input_text, lang, status, text_hash)
+               values ($1, $2, $3, 'queued', $4)""",
+            job_id, intake.text, intake.lang, intake.text_hash,
         )
-    # 2.2 intake, 2.3 cache, 2.4 limits, 2.5 gate + n8n dispatch plug in here
-    return {"job_id": str(job_id)}
-
+    # 2.3 cache, 2.4 limits, 2.5 gate + n8n dispatch plug in here
+    return {"job_id": str(job_id), "lang": intake.lang, "redactions": intake.redactions}
 
 @router.get("/jobs/{job_id}")
 async def get_job(job_id: uuid.UUID):
