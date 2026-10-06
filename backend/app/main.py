@@ -3,6 +3,7 @@ import json
 import os
 import uuid
 from contextlib import asynccontextmanager
+import asyncio
 
 import asyncpg
 import httpx
@@ -15,14 +16,20 @@ load_dotenv()
 
 from app.db import db_url, init_pool, close_pool   # after load_dotenv
 from app.routers.jobs import router
+from app import job_watchdog
 
 
 @asynccontextmanager
 async def lifespan(app):
     await init_pool()
+    task = asyncio.create_task(job_watchdog.run_forever())
     yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
     await close_pool()
-
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(router)
