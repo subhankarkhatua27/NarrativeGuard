@@ -7,9 +7,12 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from app.intake import prepare, IntakeError
+from app import n8n
 from app import guard
 
 import app.db as db
+OFFLINE_MSG = ("Live analysis is offline right now. Please try one of the example "
+               "claims, which work anytime, or come back a little later.")
 
 router = APIRouter(prefix="/api")
 
@@ -43,7 +46,7 @@ async def create_check(body: CheckIn, request: Request):
     base = {"lang": intake.lang, "redactions": intake.redactions}
     pool = db.get_pool()
 
-    # Free answers first: cache hits and "seen before" cost no quota, so no human check or limits.
+    # Free answers first: cache hits and "seen before" need no n8n, no captcha, no limits.
     async with pool.acquire() as c:
         hit = await cache.exact_hit(c, intake.text_hash)
         if hit:
@@ -63,24 +66,37 @@ async def create_check(body: CheckIn, request: Request):
         if seen["found"] and not body.force:
             return {**base, "job_id": None, "from_cache": False, "seen_before": seen}
 
-    # A real analysis will run from here on: protect the quota.
+    # A live analysis is needed from here on.
+    # 1. Is n8n up? (before the captcha, so an offline answer doesn't waste the single-use token)
+    if not await n8n.is_up():
+        raise guard.err(503, "n8n_offline", OFFLINE_MSG)
+
+    # 2. Protect the quota.
     ip = guard.client_ip(request)
-    await guard.verify_turnstile(body.turnstile_token, ip)      # network call, no DB connection held
+    await guard.verify_turnstile(body.turnstile_token, ip)
     ip_hash = guard.client_hash(ip)
 
+    # 3. Create the job and start the pipeline.
+    job_id = uuid.uuid4()
     async with pool.acquire() as c:
-        # 2.5: the n8n availability gate goes here, BEFORE enforce_limits
         await guard.enforce_limits(c, ip_hash)
-        job_id = uuid.uuid4()
         await c.execute(
             """insert into jobs (id, input_text, lang, status, text_hash, client_hash)
-               values ($1, $2, $3, 'queued', $4, $5)""",
+               values ($1, $2, $3, 'running', $4, $5)""",
             job_id, intake.text, intake.lang, intake.text_hash, ip_hash,
         )
-    # 2.5: n8n dispatch goes here
+
+    if not await n8n.dispatch(job_id, intake.text, intake.lang):
+        n8n.mark_down()
+        async with pool.acquire() as c:
+            await c.execute(
+                "update jobs set status='failed', error=$2, updated_at=now() where id=$1",
+                job_id, "n8n unreachable at dispatch",
+            )
+        raise guard.err(503, "n8n_offline", OFFLINE_MSG)
+
     return {**base, "job_id": str(job_id), "from_cache": False,
             "seen_before": seen if seen["found"] else None}
-
 
 @router.get("/jobs/{job_id}")
 async def get_job(job_id: uuid.UUID):
