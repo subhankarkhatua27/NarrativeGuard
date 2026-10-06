@@ -3,7 +3,7 @@ import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
-base = os.getenv("API_BASE", "http://127.0.0.1:8000")
+base = os.getenv("API_BASE", "https://narrativeguard-2.onrender.com")
 job_id = sys.argv[1]
 h = {"X-Webhook-Secret": os.environ["WEBHOOK_SHARED_SECRET"]}
 
