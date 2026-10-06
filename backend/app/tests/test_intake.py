@@ -1,5 +1,5 @@
 import pytest
-from intake import prepare, redact, normalize, make_hash, IntakeError
+from app.intake import prepare, redact, normalize, make_hash, IntakeError
 
 
 @pytest.mark.parametrize("raw", [
