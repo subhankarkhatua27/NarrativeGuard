@@ -29,7 +29,7 @@ def _fresh() -> bool:
     return time.monotonic() - _state["at"] < ttl
 
 
-async def is_up() -> bool:
+async def is_up():
     if _fresh():
         return _state["ok"]
     async with _lock:
