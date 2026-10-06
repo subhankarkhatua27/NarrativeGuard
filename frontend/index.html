@@ -16,7 +16,7 @@
     <pre id="log"></pre>
   </div>
   <script>
-    const es = new EventSource("https://narrativeguard-2.onrender.com/api/jobs/acb98524-a068-4b8b-bfae-a89cc6b4e5fd/stream");
+    const es = new EventSource("https://narrativeguard-2.onrender.com/api/jobs/f7d2f84c-c1e8-45e8-953c-674d06fded2a/stream");
     for (const t of ["stage", "result", "failed"]) {
       es.addEventListener(t, e => {
         log.textContent += t + " " + e.data + "\n";
