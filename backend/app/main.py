@@ -13,8 +13,8 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
-from app.db import db_url, init_pool, close_pool   # after load_dotenv
-from app.routers.jobs import router
+from db import db_url, init_pool, close_pool   # after load_dotenv
+from routers.jobs import router
 
 
 @asynccontextmanager
