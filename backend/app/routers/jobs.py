@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from app.intake import prepare, IntakeError
+from app import guard
 
 import app.db as db
 
@@ -18,8 +19,8 @@ HEARTBEAT_SECONDS = 15
 class CheckIn(BaseModel):
     text: str = Field(min_length=1, max_length=20000)
     lang: str | None = None
-    force: bool = False          # "Check anyway" after a seen-before card
-
+    force: bool = False
+    turnstile_token: str | None = None
 
 
 
@@ -33,16 +34,17 @@ def _sse(event: str, data, id: int | None = None) -> str:
 
 
 @router.post("/check")
-async def create_check(body: CheckIn):
+async def create_check(body: CheckIn, request: Request):
     try:
         intake = prepare(body.text, body.lang)
     except IntakeError as e:
-        raise HTTPException(422, str(e))
+        raise guard.err(422, "invalid_input", str(e))
 
     base = {"lang": intake.lang, "redactions": intake.redactions}
+    pool = db.get_pool()
 
-    async with db.get_pool().acquire() as c:
-        # 1. exact repeat: instant, free, exempt from all limits
+    # Free answers first: cache hits and "seen before" cost no quota, so no human check or limits.
+    async with pool.acquire() as c:
         hit = await cache.exact_hit(c, intake.text_hash)
         if hit:
             job_id = uuid.uuid4()
@@ -57,21 +59,28 @@ async def create_check(body: CheckIn):
             return {**base, "job_id": str(job_id), "from_cache": True,
                     "result": json.loads(hit["verdict"])}
 
-        # 2. near-repeat or an existing fact-check: show it first, unless the user insists
         seen = await cache.seen_before(c, intake.text)
         if seen["found"] and not body.force:
             return {**base, "job_id": None, "from_cache": False, "seen_before": seen}
 
-        # 2.4 limits and 2.5 n8n gate go here, before the insert
+    # A real analysis will run from here on: protect the quota.
+    ip = guard.client_ip(request)
+    await guard.verify_turnstile(body.turnstile_token, ip)      # network call, no DB connection held
+    ip_hash = guard.client_hash(ip)
+
+    async with pool.acquire() as c:
+        # 2.5: the n8n availability gate goes here, BEFORE enforce_limits
+        await guard.enforce_limits(c, ip_hash)
         job_id = uuid.uuid4()
         await c.execute(
-            """insert into jobs (id, input_text, lang, status, text_hash)
-               values ($1, $2, $3, 'queued', $4)""",
-            job_id, intake.text, intake.lang, intake.text_hash,
+            """insert into jobs (id, input_text, lang, status, text_hash, client_hash)
+               values ($1, $2, $3, 'queued', $4, $5)""",
+            job_id, intake.text, intake.lang, intake.text_hash, ip_hash,
         )
-    # 2.5 n8n dispatch goes here
+    # 2.5: n8n dispatch goes here
     return {**base, "job_id": str(job_id), "from_cache": False,
             "seen_before": seen if seen["found"] else None}
+
 
 @router.get("/jobs/{job_id}")
 async def get_job(job_id: uuid.UUID):
