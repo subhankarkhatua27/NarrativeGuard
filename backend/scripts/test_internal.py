@@ -53,7 +53,8 @@ try:
     check("result without verdict rejected", r.status_code == 422, str(r.status_code))
     r = post(f"/internal/jobs/{id1}/result", {"verdict": "test", "summary": "internal test", "sources": []})
     check("valid result accepted", r.status_code == 200 and not r.json().get("ignored"), str(r.status_code))
-    check("failed job shows failed", c.get(f"{base}/api/jobs/{id2}").json().get("status") == "failed")
+    j = c.get(f"{base}/api/jobs/{id2}").json()
+    check("failed job shows failed", j.get("status") == "failed", str(j))
     check("finished job shows done", c.get(f"{base}/api/jobs/{id1}").json().get("status") == "done")
 finally:
     asyncio.run(db_run("delete from jobs where input_text = 'internal test claim'"))

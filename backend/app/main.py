@@ -20,6 +20,7 @@ load_dotenv()
 
 from app.db import db_url, init_pool, close_pool   # after load_dotenv
 from app.routers.jobs import router
+from app.routers.examples import router as examples_route
 from app import job_watchdog
 
 
@@ -37,6 +38,7 @@ async def lifespan(app):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(router)
+app.include_router(examples_route)
 
 origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
