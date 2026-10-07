@@ -20,20 +20,21 @@ async def sweep() -> int:
         rows = await c.fetch(
             """update jobs set
                  status = 'failed',
-                 error = case when created_at < now() - make_interval(secs => $1)
-                              then $3 else $4 end,
+                 error = case when created_at < now() - make_interval(secs => $1::float8)
+                              then $3::text else $4::text end,
                  completed_at = now(), updated_at = now()
                where status in ('queued', 'running')
-                 and (created_at < now() - make_interval(secs => $1)
-                      or updated_at < now() - make_interval(secs => $2))
+                 and (created_at < now() - make_interval(secs => $1::float8)
+                      or updated_at < now() - make_interval(secs => $2::float8))
                returning id, error""",
             max_s, idle_s, MSG_TOO_LONG, MSG_STALLED,
         )
         for r in rows:
             await c.execute(
                 """insert into job_events (job_id, seq, stage, status, detail)
-                   select $1, coalesce(max(seq), 0) + 1, 'watchdog', 'failed', to_jsonb($2::text)
-                   from job_events where job_id = $1
+                   select $1::uuid, coalesce(max(seq), 0) + 1, 'watchdog', 'failed',
+                          to_jsonb($2::text)
+                   from job_events where job_id = $1::uuid
                    on conflict (job_id, seq) do nothing""",
                 r["id"], r["error"],
             )
