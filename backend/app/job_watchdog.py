@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 
-import db
+from app import db
 
 logger = logging.getLogger("narrativeguard")
 
