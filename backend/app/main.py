@@ -11,6 +11,10 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from typing import Literal
+from pydantic import field_validator
+from app import db
+
 
 load_dotenv()
 
@@ -58,11 +62,27 @@ class TestJob(BaseModel):
     lang: str = "en"
 
 
+REQUIRED_RESULT_KEYS = ("verdict",)      # edit this to your real required result fields
+MAX_DETAIL_CHARS = 20000
+PIPELINE_ERROR = "The analysis hit a problem and was stopped. Please try again."
+
+
 class Event(BaseModel):
-    seq: int = Field(ge=1)
-    stage: str
-    status: str
+    seq: int = Field(ge=1, le=1000)
+    stage: str = Field(min_length=1, max_length=50)
+    status: Literal["running", "done", "failed"]
     detail: dict | list | str | None = None
+
+    @field_validator("detail")
+    @classmethod
+    def detail_not_huge(cls, v):
+        if v is not None and len(json.dumps(v)) > MAX_DETAIL_CHARS:
+            raise ValueError("detail too large")
+        return v
+
+
+class Fail(BaseModel):
+    message: str = Field(default="", max_length=500)
 
 
 @app.api_route("/health", methods=["GET", "HEAD"])
@@ -108,19 +128,21 @@ async def test_job(body: TestJob):
 
 @app.post("/internal/jobs/{job_id}/events", dependencies=[Depends(check_secret)])
 async def add_event(job_id: uuid.UUID, ev: Event):
-    conn = await connect()
-    try:
-        await conn.execute(
-            """insert into job_events (job_id, seq, stage, status, detail)
-               values ($1, $2, $3, $4, $5::jsonb)
-               on conflict (job_id, seq) do nothing""",
-            job_id, ev.seq, ev.stage, ev.status, json.dumps(ev.detail),
+    async with db.get_pool().acquire() as c:
+        try:
+            await c.execute(
+                """insert into job_events (job_id, seq, stage, status, detail)
+                   values ($1, $2, $3, $4, $5::jsonb)
+                   on conflict (job_id, seq) do nothing""",
+                job_id, ev.seq, ev.stage, ev.status, json.dumps(ev.detail),
+            )
+        except asyncpg.ForeignKeyViolationError:
+            raise HTTPException(status_code=404, detail="unknown job")
+        # activity keeps the watchdog away, but only for jobs still in progress
+        await c.execute(
+            "update jobs set updated_at=now() where id=$1 and status in ('queued','running')",
+            job_id,
         )
-        await conn.execute("update jobs set updated_at=now() where id=$1", job_id)
-    except asyncpg.ForeignKeyViolationError:
-        raise HTTPException(status_code=404, detail="unknown job")
-    finally:
-        await conn.close()
     return {"ok": True}
 
 
@@ -133,17 +155,26 @@ logger = logging.getLogger("narrativeguard")   # put this near the top of main.p
 
 @app.post("/internal/jobs/{job_id}/result", dependencies=[Depends(check_secret)])
 async def set_result(job_id: uuid.UUID, result: dict):
-    conn = await connect()
-    try:
-        status = await conn.execute(
-            """update jobs set result=$2::jsonb, status='done',
-               completed_at=now(), updated_at=now() where id=$1""",
+    missing = [k for k in REQUIRED_RESULT_KEYS if not result.get(k)]
+    if missing:
+        raise HTTPException(status_code=422, detail=f"result is missing: {missing}")
+    if len(json.dumps(result)) > 200_000:
+        raise HTTPException(status_code=413, detail="result too large")
+
+    async with db.get_pool().acquire() as c:
+        updated = await c.fetchval(
+            """update jobs set result=$2::jsonb, status='done', error=null,
+               completed_at=now(), updated_at=now()
+               where id=$1 and status in ('queued','running')
+               returning 1""",
             job_id, json.dumps(result),
         )
-        if status == "UPDATE 0":
-            raise HTTPException(status_code=404, detail="unknown job")
+        if updated is None:
+            if not await c.fetchval("select 1 from jobs where id=$1", job_id):
+                raise HTTPException(status_code=404, detail="unknown job")
+            return {"ok": True, "ignored": True}     # duplicate or late result: harmless
         try:
-            await conn.execute(
+            await c.execute(
                 """insert into verdict_cache (claim_hash, claim_text, lang, verdict, expires_at)
                    select text_hash, input_text, lang, $2::jsonb, now() + interval '7 days'
                    from jobs where id = $1 and text_hash is not null
@@ -154,8 +185,21 @@ async def set_result(job_id: uuid.UUID, result: dict):
             )
         except Exception:
             logger.exception("verdict cache write failed for job %s", job_id)
-    finally:
-        await conn.close()
+    return {"ok": True}
+
+
+@app.post("/internal/jobs/{job_id}/fail", dependencies=[Depends(check_secret)])
+async def fail_job(job_id: uuid.UUID, body: Fail):
+    """n8n's error branch calls this so the page fails instantly instead of waiting for the watchdog."""
+    async with db.get_pool().acquire() as c:
+        updated = await c.fetchval(
+            """update jobs set status='failed', error=$2, completed_at=now(), updated_at=now()
+               where id=$1 and status in ('queued','running') returning 1""",
+            job_id, PIPELINE_ERROR,
+        )
+        if updated is None and not await c.fetchval("select 1 from jobs where id=$1", job_id):
+            raise HTTPException(status_code=404, detail="unknown job")
+    logger.warning("pipeline reported failure for job %s: %s", job_id, body.message)
     return {"ok": True}
 
 @app.get("/jobs/{job_id}")          # legacy Phase 0 route; remove at end of Phase 2
