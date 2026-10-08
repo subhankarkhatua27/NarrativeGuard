@@ -275,7 +275,7 @@ export const MOCK_EXAMPLES: ExampleItem[] = [
     title: 'All Saturdays are bank holidays',
     verdict: 'misleading',
     snippet: 'A fake gazette notification claiming all Saturdays are now bank holidays.',
-    claim_text: mockA.claim_text,
+    claim_text: mockA.claim_text || '',
     result: mockA,
   },
   {
@@ -283,7 +283,7 @@ export const MOCK_EXAMPLES: ExampleItem[] = [
     title: 'EVM machines were hacked',
     verdict: 'contradicted',
     snippet: 'Claims that EVMs were hacked to change votes in the last election.',
-    claim_text: mockB.claim_text,
+    claim_text: mockB.claim_text || '',
     result: mockB,
   },
   {
@@ -291,7 +291,7 @@ export const MOCK_EXAMPLES: ExampleItem[] = [
     title: 'Bridge collapse reports on WhatsApp',
     verdict: 'too_new',
     snippet: 'Breaking news of a bridge collapse spreading via WhatsApp forwards.',
-    claim_text: mockC.claim_text,
+    claim_text: mockC.claim_text || '',
     result: mockC,
   },
   {
@@ -299,7 +299,7 @@ export const MOCK_EXAMPLES: ExampleItem[] = [
     title: 'New tax on UPI payments',
     verdict: 'unverifiable',
     snippet: 'A viral message claiming a 1% per-transaction tax on UPI payments.',
-    claim_text: mockD.claim_text,
+    claim_text: mockD.claim_text || '',
     result: mockD,
   },
 ];

@@ -1,75 +1,42 @@
-import { ShieldCheck, ShieldAlert, ShieldX, Clock, HelpCircle } from 'lucide-react';
-import type { AnalysisResult, Verdict } from '@/lib/types';
-
-const VERDICT_CONFIG: Record<
-  Verdict,
-  { label: string; icon: typeof ShieldCheck; color: string; bg: string; border: string }
-> = {
-  contradicted: {
-    label: 'Contradicted',
-    icon: ShieldX,
-    color: 'text-red-700',
-    bg: 'bg-red-50',
-    border: 'border-red-200',
-  },
-  misleading: {
-    label: 'Misleading',
-    icon: ShieldAlert,
-    color: 'text-amber-700',
-    bg: 'bg-amber-50',
-    border: 'border-amber-200',
-  },
-  too_new: {
-    label: "Can't verify yet",
-    icon: Clock,
-    color: 'text-blue-700',
-    bg: 'bg-blue-50',
-    border: 'border-blue-200',
-  },
-  unverifiable: {
-    label: "Can't verify",
-    icon: HelpCircle,
-    color: 'text-slate-700',
-    bg: 'bg-slate-50',
-    border: 'border-slate-200',
-  },
-};
+import type { AnalysisResult } from '@/lib/types';
+import VerdictCard from './result/VerdictCard';
+import RedFlags from './result/RedFlags';
+import DiffView from './result/DiffView';
+import SourcesPanel from './result/SourcesPanel';
 
 interface ResultViewProps {
-  result: AnalysisResult;
+  result?: AnalysisResult | null;
 }
 
 export default function ResultView({ result }: ResultViewProps) {
-  const config = VERDICT_CONFIG[result.verdict];
-  const Icon = config.icon;
-
-  return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
-      {/* Verdict badge */}
-      <div className={`flex items-center gap-3 rounded-2xl border ${config.border} ${config.bg} px-5 py-4`}>
-        <Icon className={`h-7 w-7 shrink-0 ${config.color}`} />
-        <div>
-          <p className={`text-lg font-bold ${config.color}`}>{config.label}</p>
-          <p className="text-xs text-slate-500">
-            Confidence: {Math.round(result.confidence * 100)}%
+  if (!result) {
+    return (
+      <div className="mx-auto max-w-4xl px-4 py-16 text-center">
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-base font-semibold text-slate-700 dark:text-slate-300">
+            No analysis result available.
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Please submit a message to view the detailed fact-check report.
           </p>
         </div>
       </div>
+    );
+  }
 
-      {/* Basis */}
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
-          Basis
-        </h2>
-        <p className="mt-2 text-sm leading-relaxed text-slate-700">
-          {result.basis}
-        </p>
-      </div>
+  return (
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-12 space-y-8">
+      {/* 1. Verdict Card */}
+      <VerdictCard result={result} />
 
-      {/* Placeholder for future content */}
-      <p className="mt-6 text-center text-xs text-slate-400">
-        Full analysis details will appear here.
-      </p>
+      {/* 2. Red Flags & Manipulation Tactics */}
+      <RedFlags result={result} />
+
+      {/* 3. Side-by-Side Diff View */}
+      <DiffView result={result} />
+
+      {/* 4. Sources Panel (includes 5. SourceTierLegend popover) */}
+      <SourcesPanel result={result} />
     </div>
   );
 }
