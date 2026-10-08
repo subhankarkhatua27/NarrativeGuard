@@ -1,28 +1,16 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NarrativeGuard</title>
-  <style>
-    body { font-family: system-ui, sans-serif; display: grid; place-items: center; min-height: 100vh; margin: 0; }
-    #status { font-size: 1.5rem; }
-  </style>
-</head>
-<body>
-  <div>
-    <h1>NarrativeGuard</h1>
-    <p id="status">Checking API...</p>
-    <pre id="log"></pre>
-  </div>
-  <script>
-    const es = new EventSource("https://narrativeguard-2.onrender.com/api/jobs/f7d2f84c-c1e8-45e8-953c-674d06fded2a/stream");
-    for (const t of ["stage", "result", "failed"]) {
-      es.addEventListener(t, e => {
-        log.textContent += t + " " + e.data + "\n";
-        if (t !== "stage") es.close();
-      });
-    }
-  </script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Project Knowledge Setup</title>
+    <meta property="og:image" content="https://bolt.new/static/og_default.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://bolt.new/static/og_default.png" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
