@@ -5,7 +5,6 @@ import type {
   ExampleItem,
   StageEvent,
   AnalysisResult,
-  StreamEvent,
 } from './types';
 import {
   MOCK_EXAMPLES,
@@ -21,23 +20,47 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function mockError(code: string, message: string): Error & { code: string } {
+function apiError(code: string, message: string): Error & { code: string } {
   const e = new Error(message) as Error & { code: string };
   e.code = code;
   return e;
 }
 
-// ---- checkClaim ----
+async function throwFromResponse(res: Response): Promise<never> {
+  const errBody = await res.json().catch(() => ({}));
+  const detail = (errBody as { detail?: { code?: string; message?: string } })?.detail;
+  const code = typeof detail?.code === 'string' ? detail.code : 'unknown';
+  const message =
+    typeof detail?.message === 'string' && detail.message.trim()
+      ? detail.message
+      : 'Request failed';
+  throw apiError(code, message);
+}
+
+function failedPayload(data: unknown): { code: string; message: string } {
+  const error = (data as { error?: unknown })?.error;
+  if (typeof error === 'string') {
+    return { code: 'unknown', message: error };
+  }
+  if (error && typeof error === 'object') {
+    const rec = error as { code?: unknown; message?: unknown };
+    return {
+      code: typeof rec.code === 'string' ? rec.code : 'unknown',
+      message: typeof rec.message === 'string' ? rec.message : 'Analysis failed',
+    };
+  }
+  return { code: 'unknown', message: 'Analysis failed' };
+}
+
 export async function checkClaim(body: CheckClaimRequest): Promise<CheckClaimResponse> {
   if (USE_MOCK) {
     await delay(600 + Math.random() * 400);
     try {
-      const res = mockCheckClaim(body.text);
-      return res;
+      return mockCheckClaim(body.text, { force: body.force });
     } catch (err: unknown) {
-      const code = (err as { code?: string })?.code || 'n8n_offline';
+      const code = (err as { code?: string })?.code || 'unknown';
       const message = (err as { message?: string })?.message || 'Unknown error';
-      throw mockError(code, message);
+      throw apiError(code, message);
     }
   }
 
@@ -48,33 +71,25 @@ export async function checkClaim(body: CheckClaimRequest): Promise<CheckClaimRes
   });
 
   if (!res.ok) {
-    const errBody = await res.json().catch(() => ({}));
-    const code = errBody.error?.code || errBody.code || 'invalid_input';
-    const message = errBody.error?.message || errBody.message || 'Request failed';
-    throw mockError(code, message);
+    await throwFromResponse(res);
   }
 
   return res.json() as Promise<CheckClaimResponse>;
 }
 
-// ---- getJob ----
 export async function getJob(id: string): Promise<GetJobResponse> {
   if (USE_MOCK) {
     await delay(300);
     return mockGetJob(id);
   }
 
-  const res = await fetch(`${BASE_URL}/api/job/${encodeURIComponent(id)}`);
+  const res = await fetch(`${BASE_URL}/api/jobs/${encodeURIComponent(id)}`);
   if (!res.ok) {
-    const errBody = await res.json().catch(() => ({}));
-    const code = errBody.error?.code || 'invalid_input';
-    const message = errBody.error?.message || 'Failed to fetch job';
-    throw mockError(code, message);
+    await throwFromResponse(res);
   }
   return res.json() as Promise<GetJobResponse>;
 }
 
-// ---- getExamples ----
 export async function getExamples(): Promise<ExampleItem[]> {
   if (USE_MOCK) {
     await delay(200);
@@ -88,8 +103,6 @@ export async function getExamples(): Promise<ExampleItem[]> {
   return res.json() as Promise<ExampleItem[]>;
 }
 
-// ---- openStream: returns a disposer function ----
-// Calls onStage for stage events, onResult for result events, onFailed for failed events.
 export function openStream(
   id: string,
   onStage: (event: StageEvent) => void,
@@ -99,42 +112,58 @@ export function openStream(
 ): () => void {
   if (USE_MOCK) {
     const controller = new AbortController();
-    mockOpenStream(
-      id,
-      onStage,
-      onResult,
-      controller.signal,
-    );
+    mockOpenStream(id, onStage, onResult, onFailed, controller.signal);
     return () => controller.abort();
   }
 
-  const url = `${BASE_URL}/api/job/${encodeURIComponent(id)}/stream`;
+  const url = `${BASE_URL}/api/jobs/${encodeURIComponent(id)}/stream`;
   const es = new EventSource(url);
+  let closed = false;
 
-  es.onmessage = (e: MessageEvent) => {
-    try {
-      const data = JSON.parse(e.data) as StreamEvent;
-      if (data.event === 'stage') {
-        onStage(data);
-      } else if (data.event === 'result') {
-        onResult(data.result);
-      } else if (data.event === 'failed') {
-        onFailed(data.error);
-      }
-    } catch {
-      // ignore malformed
-    }
-  };
-
-  es.onerror = () => {
-    onError(new Error('Stream connection failed'));
+  const close = () => {
+    if (closed) return;
+    closed = true;
     es.close();
   };
 
-  return () => es.close();
+  es.addEventListener('stage', (e: MessageEvent) => {
+    try {
+      const data = JSON.parse(e.data) as StageEvent;
+      onStage(data);
+    } catch {
+      // ignore malformed
+    }
+  });
+
+  es.addEventListener('result', (e: MessageEvent) => {
+    try {
+      const data = JSON.parse(e.data) as AnalysisResult;
+      close();
+      onResult(data);
+    } catch {
+      // ignore malformed
+    }
+  });
+
+  es.addEventListener('failed', (e: MessageEvent) => {
+    try {
+      const data = JSON.parse(e.data);
+      close();
+      onFailed(failedPayload(data));
+    } catch {
+      close();
+      onFailed({ code: 'unknown', message: 'Analysis failed' });
+    }
+  });
+
+  es.onerror = () => {
+    close();
+    onError(new Error('Stream connection failed'));
+  };
+
+  return close;
 }
 
-// ---- preWarm: silent GET to /health ----
 export function preWarm(): void {
   if (USE_MOCK) return;
   fetch(`${BASE_URL}/health`, { method: 'GET' }).catch(() => {});

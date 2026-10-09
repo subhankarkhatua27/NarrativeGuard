@@ -1,53 +1,7 @@
 import React from 'react';
-import { FileDiff, CheckCircle2, AlertOctagon, ExternalLink, Tag } from 'lucide-react';
-import type { AnalysisResult, DiffSpan, MutationType } from '@/lib/types';
+import { FileDiff, CheckCircle2, AlertOctagon, ExternalLink } from 'lucide-react';
+import type { AnalysisResult, DiffSpan } from '@/lib/types';
 
-const MUTATION_DESCRIPTIONS: Record<string, { label: string; meaning: string; color: string }> = {
-  fabrication: {
-    label: 'Fabrication',
-    meaning: 'Completely invented information with no factual basis.',
-    color: 'bg-red-100 text-red-900 border-red-300 dark:bg-red-950/60 dark:text-red-200 dark:border-red-800',
-  },
-  reframing: {
-    label: 'Reframing',
-    meaning: 'Takes real facts but spins or distorts their meaning.',
-    color: 'bg-purple-100 text-purple-900 border-purple-300 dark:bg-purple-950/60 dark:text-purple-200 dark:border-purple-800',
-  },
-  exaggeration: {
-    label: 'Exaggeration',
-    meaning: 'Blows numbers, scale, or consequences out of proportion.',
-    color: 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800',
-  },
-  omission: {
-    label: 'Omission',
-    meaning: 'Leaves out crucial context that changes the full story.',
-    color: 'bg-orange-100 text-orange-900 border-orange-300 dark:bg-orange-950/60 dark:text-orange-200 dark:border-orange-800',
-  },
-  old_news: {
-    label: 'Old News',
-    meaning: 'Passes off past events as current breaking news.',
-    color: 'bg-blue-100 text-blue-900 border-blue-300 dark:bg-blue-950/60 dark:text-blue-200 dark:border-blue-800',
-  },
-  false_context: {
-    label: 'False Context',
-    meaning: 'Combines real media/text with inaccurate time or location.',
-    color: 'bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-950/60 dark:text-rose-200 dark:border-rose-800',
-  },
-};
-
-function getMutationMeta(mut: MutationType | string) {
-  const key = String(mut).toLowerCase().trim();
-  if (MUTATION_DESCRIPTIONS[key]) return MUTATION_DESCRIPTIONS[key];
-  return {
-    label: mut.replace(/_/g, ' '),
-    meaning: 'Distorts factual narrative.',
-    color: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-200',
-  };
-}
-
-/**
- * Renders claim text highlighting diff_spans safely as plain string text elements.
- */
 function renderDiffMessage(text: string, diffSpans?: DiffSpan[]): React.ReactNode {
   if (!text) return null;
   if (!diffSpans || diffSpans.length === 0) {
@@ -59,32 +13,23 @@ function renderDiffMessage(text: string, diffSpans?: DiffSpan[]): React.ReactNod
     end: number;
     text: string;
     note: string;
-    type?: string;
   }
 
   const ranges: DiffRange[] = [];
 
   for (const ds of diffSpans) {
-    let start = ds.start;
-    let end = ds.end;
     const spanStr = ds.span;
-
-    // If start and end are missing, search for spanStr in text
-    if ((start === undefined || end === undefined) && spanStr) {
-      const idx = text.toLowerCase().indexOf(spanStr.toLowerCase());
-      if (idx !== -1) {
-        start = idx;
-        end = idx + spanStr.length;
-      }
-    }
-
-    if (start !== undefined && end !== undefined && start < end && start >= 0 && end <= text.length) {
+    if (!spanStr) continue;
+    const idx = text.toLowerCase().indexOf(spanStr.toLowerCase());
+    if (idx === -1) continue;
+    const start = idx;
+    const end = idx + spanStr.length;
+    if (start < end && start >= 0 && end <= text.length) {
       ranges.push({
         start,
         end,
         text: text.substring(start, end),
-        note: ds.note,
-        type: ds.type,
+        note: ds.note || '',
       });
     }
   }
@@ -101,22 +46,17 @@ function renderDiffMessage(text: string, diffSpans?: DiffSpan[]): React.ReactNod
   ranges.forEach((r, i) => {
     if (r.start > currentIndex) {
       nodes.push(
-        <span key={`txt-${currentIndex}`}>{text.substring(currentIndex, r.start)}</span>
+        <span key={`txt-${currentIndex}`}>{text.substring(currentIndex, r.start)}</span>,
       );
     }
     nodes.push(
       <span
         key={`diff-${i}`}
-        className="group relative inline rounded bg-red-100 px-1 py-0.5 font-medium text-red-950 underline decoration-red-400 decoration-2 dark:bg-red-950/70 dark:text-red-100 dark:decoration-red-500 cursor-help"
+        className="group relative inline rounded bg-red-100 px-1 py-0.5 font-medium text-red-950 underline decoration-red-400 decoration-2 cursor-help"
         title={r.note}
       >
         {r.text}
-        {r.note && (
-          <span className="ml-1 inline-flex items-center rounded bg-red-200 px-1 py-0.2 text-[10px] font-bold text-red-900 dark:bg-red-900 dark:text-red-100">
-            {r.type || 'distortion'}
-          </span>
-        )}
-      </span>
+      </span>,
     );
     currentIndex = r.end;
   });
@@ -128,15 +68,19 @@ function renderDiffMessage(text: string, diffSpans?: DiffSpan[]): React.ReactNod
   return <>{nodes}</>;
 }
 
-export default function DiffView({ result }: { result: AnalysisResult }) {
-  const claimText = result.claim || result.claim_text || result.cleaned_text || '';
+export default function DiffView({
+  result,
+  originalText,
+}: {
+  result: AnalysisResult;
+  originalText?: string | null;
+}) {
+  const messageText = originalText?.trim() || result.claim || '';
   const verifiedFact = result.verified_fact;
-  const mutations = result.mutations || [];
   const diffSpans = result.diff_spans || [];
 
-  const verifiedText =
-    verifiedFact?.text || verifiedFact?.details || verifiedFact?.summary || null;
-  const evidenceIds = verifiedFact?.evidence_ids || ['E1'];
+  const verifiedText = verifiedFact?.text || null;
+  const evidenceIds = verifiedFact?.evidence_ids || [];
 
   const scrollToSource = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
@@ -147,72 +91,59 @@ export default function DiffView({ result }: { result: AnalysisResult }) {
     }
   };
 
+  const hasContent = messageText || verifiedText || diffSpans.length > 0;
+  if (!hasContent) {
+    return null;
+  }
+
   return (
-    <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-2xs dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-center gap-2.5 text-slate-900 dark:text-slate-100">
-        <FileDiff className="h-6 w-6 text-teal-600 dark:text-teal-400" />
+    <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-2xs">
+      <div className="flex items-center gap-2.5 text-slate-900">
+        <FileDiff className="h-6 w-6 text-teal-600" />
         <h2 className="text-lg font-bold tracking-tight">
           Side-by-Side Reality Check
         </h2>
       </div>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-        Comparing the message claims against verified evidence.
+      <p className="mt-1 text-xs text-slate-500">
+        Comparing the message against verified evidence.
       </p>
 
-      {/* Mutation Chips */}
-      {mutations.length > 0 && (
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <span className="flex items-center gap-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
-            <Tag className="h-3.5 w-3.5" /> Distortion Patterns:
-          </span>
-          {mutations.map((mut, idx) => {
-            const meta = getMutationMeta(mut);
-            return (
-              <span
-                key={idx}
-                className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-semibold ${meta.color}`}
-                title={meta.meaning}
-              >
-                <span>{meta.label}</span>
-                <span className="text-[10px] opacity-75">({meta.meaning})</span>
-              </span>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Side-by-side (desktop) / Stacked (mobile) */}
       <div className="mt-6 grid gap-6 md:grid-cols-2">
-        {/* Left Column: What the message says */}
-        <div className="flex flex-col rounded-xl border border-red-200/80 bg-red-50/40 p-5 dark:border-red-900/40 dark:bg-red-950/10">
-          <div className="flex items-center justify-between border-b border-red-200/60 pb-3 dark:border-red-900/30">
-            <div className="flex items-center gap-2 text-red-900 dark:text-red-300">
-              <AlertOctagon className="h-4 w-4 text-red-600 dark:text-red-400" />
+        <div className="flex flex-col rounded-xl border border-red-200/80 bg-red-50/40 p-5">
+          <div className="flex items-center justify-between border-b border-red-200/60 pb-3">
+            <div className="flex items-center gap-2 text-red-900">
+              <AlertOctagon className="h-4 w-4 text-red-600" />
               <h3 className="text-xs font-bold uppercase tracking-wider">
                 What the Message Says
               </h3>
             </div>
             {diffSpans.length > 0 && (
-              <span className="text-[11px] font-medium text-red-700 dark:text-red-400">
+              <span className="text-[11px] font-medium text-red-700">
                 {diffSpans.length} distortion point{diffSpans.length > 1 ? 's' : ''}
               </span>
             )}
           </div>
-          <div className="mt-3 text-sm leading-relaxed text-slate-800 dark:text-slate-200 font-normal">
-            {claimText ? (
-              renderDiffMessage(claimText, diffSpans)
+          <div className="mt-3 text-sm leading-relaxed text-slate-800 font-normal">
+            {messageText ? (
+              renderDiffMessage(messageText, diffSpans)
             ) : (
-              <span className="italic text-slate-400">No message text provided.</span>
+              <ul className="space-y-1 text-xs text-red-900">
+                {diffSpans.map((ds, i) => (
+                  <li key={i}>
+                    {ds.span ? <span className="font-semibold">"{ds.span}" — </span> : null}
+                    {ds.note}
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
 
-          {/* Notes summary for diff spans */}
-          {diffSpans.length > 0 && (
-            <div className="mt-4 border-t border-red-200/60 pt-3 dark:border-red-900/30">
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-red-800 dark:text-red-400 mb-1.5">
+          {messageText && diffSpans.length > 0 && (
+            <div className="mt-4 border-t border-red-200/60 pt-3">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-red-800 mb-1.5">
                 Distortion Notes:
               </h4>
-              <ul className="space-y-1 text-xs text-red-900 dark:text-red-300">
+              <ul className="space-y-1 text-xs text-red-900">
                 {diffSpans.map((ds, i) => (
                   <li key={i} className="flex items-start gap-1.5">
                     <span className="font-bold">•</span>
@@ -224,11 +155,10 @@ export default function DiffView({ result }: { result: AnalysisResult }) {
           )}
         </div>
 
-        {/* Right Column: What is verified */}
-        <div className="flex flex-col rounded-xl border border-emerald-200/80 bg-emerald-50/40 p-5 dark:border-emerald-900/40 dark:bg-emerald-950/10">
-          <div className="flex items-center justify-between border-b border-emerald-200/60 pb-3 dark:border-emerald-900/30">
-            <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-300">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+        <div className="flex flex-col rounded-xl border border-emerald-200/80 bg-emerald-50/40 p-5">
+          <div className="flex items-center justify-between border-b border-emerald-200/60 pb-3">
+            <div className="flex items-center gap-2 text-emerald-900">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
               <h3 className="text-xs font-bold uppercase tracking-wider">
                 What is Verified
               </h3>
@@ -240,7 +170,7 @@ export default function DiffView({ result }: { result: AnalysisResult }) {
                     key={i}
                     href={`#source-${eid}`}
                     onClick={(e) => scrollToSource(e, eid)}
-                    className="inline-flex items-center gap-0.5 rounded bg-emerald-200 px-1.5 py-0.5 text-[11px] font-bold text-emerald-900 transition-colors hover:bg-emerald-300 dark:bg-emerald-900 dark:text-emerald-100 dark:hover:bg-emerald-800"
+                    className="inline-flex items-center gap-0.5 rounded bg-emerald-200 px-1.5 py-0.5 text-[11px] font-bold text-emerald-900 transition-colors hover:bg-emerald-300"
                     title={`Jump to source ${eid}`}
                   >
                     <span>{eid}</span>
@@ -251,19 +181,19 @@ export default function DiffView({ result }: { result: AnalysisResult }) {
             )}
           </div>
 
-          <div className="mt-3 text-sm leading-relaxed text-slate-800 dark:text-slate-200 font-normal">
+          <div className="mt-3 text-sm leading-relaxed text-slate-800 font-normal">
             {verifiedText ? (
               <div>
                 <p>{verifiedText}</p>
                 {evidenceIds.length > 0 && (
-                  <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-emerald-800 dark:text-emerald-300">
-                    <span className="font-semibold">Evidence Citations:</span>
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-emerald-800">
+                    <span className="font-semibold">Evidence:</span>
                     {evidenceIds.map((eid, i) => (
                       <a
                         key={i}
                         href={`#source-${eid}`}
                         onClick={(e) => scrollToSource(e, eid)}
-                        className="inline-flex items-center gap-1 underline font-semibold hover:text-emerald-950 dark:hover:text-emerald-100"
+                        className="inline-flex items-center gap-1 underline font-semibold hover:text-emerald-950"
                       >
                         [{eid}]
                       </a>
@@ -272,7 +202,7 @@ export default function DiffView({ result }: { result: AnalysisResult }) {
                 )}
               </div>
             ) : (
-              <div className="rounded-lg bg-white/70 p-4 text-xs italic text-slate-500 shadow-2xs dark:bg-slate-900/60 dark:text-slate-400">
+              <div className="rounded-lg bg-white/70 p-4 text-xs italic text-slate-500 shadow-2xs">
                 No single verified fact statement is available for this claim. See cited sources below for context.
               </div>
             )}

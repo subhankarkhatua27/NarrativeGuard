@@ -1,15 +1,3 @@
-// ---- API contract types for NarrativeGuard ----
-
-export type Verdict =
-  | 'misleading'
-  | 'contradicted'
-  | 'unverifiable'
-  | 'too_new'
-  | 'supported'
-  | 'disputed'
-  | 'not_checkable'
-  | string;
-
 export type VerdictKey =
   | 'contradicted'
   | 'supported'
@@ -35,61 +23,62 @@ export type MutationType =
   | 'false_context'
   | string;
 
-export type SourceTier = 'T1' | 'T2' | 'T3' | 'T4' | 1 | 2 | 3 | 4;
+export type SourceKind = 'factcheck' | 'archive' | 'news' | string;
 
-export type SourceRelation =
-  | 'supports'
-  | 'contradicts'
-  | 'background'
-  | 'context'
-  | 'unrelated'
-  | 'neutral';
+export type SourceRelation = 'supports' | 'contradicts' | 'unrelated' | 'background' | string;
 
 export interface DiffSpan {
-  start?: number;
-  end?: number;
-  type?: string;
   span?: string;
-  note: string;
+  note?: string;
 }
 
 export interface RedFlag {
-  type?: string;
   tactic?: string;
-  text?: string;
   span?: string;
 }
 
 export interface Source {
   id?: string;
-  kind?: 'factcheck' | 'archive' | 'news' | string;
-  url: string;
-  title: string;
-  publisher: string;
+  kind?: SourceKind;
+  publisher?: string;
   domain?: string;
-  date: string;
-  tier: SourceTier;
-  relation: SourceRelation;
-  snippet: string;
+  tier?: number;
+  title?: string;
+  url?: string;
+  date?: string;
   rating?: string;
+  relation?: SourceRelation;
+  snippet?: string;
   syndicated_by?: string[];
   fc_match?: boolean;
 }
 
 export interface VerifiedFact {
   text?: string;
-  summary?: string;
-  details?: string;
   evidence_ids?: string[];
 }
 
-export interface SeenBefore {
-  found: boolean;
-  job_id: string | null;
-  claim_hash?: string;
+export interface SeenBeforeVerdict {
+  claim?: string;
+  result?: unknown;
+  similarity?: number;
 }
 
-// ---- Streaming / progress types ----
+export interface SeenBeforeArchiveItem {
+  title?: string;
+  url?: string;
+  source?: string;
+  domain?: string;
+  tier?: number;
+  published_at?: string;
+  similarity?: number;
+}
+
+export interface SeenBefore {
+  found?: boolean;
+  verdicts?: SeenBeforeVerdict[];
+  archive?: SeenBeforeArchiveItem[];
+}
 
 export type StageName =
   | 'started'
@@ -99,62 +88,43 @@ export type StageName =
   | 'news_search'
   | 'evidence_built'
   | 'evidence_check'
-  | 'verdict';
+  | 'verdict'
+  | string;
 
 export interface StageEventDetail {
-  text?: string;
   count?: number;
 }
 
 export interface StageEvent {
-  event: 'stage';
-  stage: StageName;
-  label?: string;
-  detail?: StageEventDetail;
-  index: number;
-  total: number;
-  done: boolean;
+  seq?: number;
+  stage?: StageName;
+  status?: string;
+  detail?: StageEventDetail | null;
 }
-
-export interface ResultEvent {
-  event: 'result';
-  result: AnalysisResult;
-}
-
-export interface FailedEvent {
-  event: 'failed';
-  error: { code: ErrorCode; message: string };
-}
-
-export type StreamEvent = StageEvent | ResultEvent | FailedEvent;
 
 export interface AnalysisResult {
-  verdict: Verdict;
-  verdict_key?: VerdictKey;
-  confidence?: number;
-  basis: string;
+  verdict?: string;
+  verdict_key?: VerdictKey | string;
+  basis?: string;
   as_of?: string;
   what_would_change?: string;
   advice?: AdvicePill;
   claim?: string;
-  claim_text?: string;
-  cleaned_text?: string;
-  claim_type?: 'fact' | 'breaking_event' | 'recycled' | 'opinion' | string;
-  verified_fact?: VerifiedFact | null;
+  claim_type?: string;
   red_flags?: RedFlag[];
   mutations?: MutationType[];
   diff_spans?: DiffSpan[];
+  verified_fact?: VerifiedFact | null;
   old_news?: 'possibly_old' | 'recent' | 'cant_tell' | string;
   earliest_date?: string | null;
   sources?: Source[];
-  seen_before?: SeenBefore;
-  created_at?: string;
 }
 
 export type ErrorCode =
   | 'invalid_input'
   | 'captcha_missing'
   | 'captcha_failed'
+  | 'captcha_unavailable'
   | 'ip_hour'
   | 'ip_day'
   | 'global_day'
@@ -162,27 +132,39 @@ export type ErrorCode =
 
 export interface CheckClaimRequest {
   text: string;
-  captcha_token?: string;
+  lang?: string;
+  force?: boolean;
+  turnstile_token?: string;
 }
 
 export interface CheckClaimResponse {
   job_id: string | null;
-  from_cache: boolean;
-  seen_before: SeenBefore;
-  result?: AnalysisResult;
+  from_cache?: boolean;
+  result?: AnalysisResult | null;
+  redactions?: unknown;
+  seen_before?: SeenBefore | null;
+}
+
+export interface JobEvent {
+  seq?: number;
+  stage?: StageName;
+  status?: string;
+  detail?: StageEventDetail | null;
 }
 
 export interface GetJobResponse {
-  status: 'queued' | 'running' | 'completed' | 'failed';
-  result?: AnalysisResult;
-  error?: { code: ErrorCode; message: string };
+  job_id?: string;
+  status?: 'queued' | 'running' | 'done' | 'failed' | string;
+  result?: AnalysisResult | null;
+  error?: unknown;
+  events?: JobEvent[];
 }
 
 export interface ExampleItem {
   id: string;
-  title: string;
-  verdict: Verdict;
-  snippet: string;
-  claim_text: string;
-  result: AnalysisResult;
+  claim?: string;
+  lang?: string;
+  expected_verdict?: string;
+  featured?: boolean;
+  result?: AnalysisResult | null;
 }

@@ -13,15 +13,19 @@ import {
 import type { AnalysisResult, Source } from '@/lib/types';
 import SourceTierLegend from './SourceTierLegend';
 
-function getNumericTier(tierVal?: string | number): number {
-  if (typeof tierVal === 'number') return tierVal;
-  if (!tierVal) return 3;
-  const str = String(tierVal).toUpperCase().trim();
-  if (str === 'T1' || str === '1') return 1;
-  if (str === 'T2' || str === '2') return 2;
-  if (str === 'T3' || str === '3') return 3;
-  if (str === 'T4' || str === '4') return 4;
+function getNumericTier(tierVal?: number): number {
+  if (typeof tierVal === 'number' && tierVal >= 1 && tierVal <= 4) return tierVal;
   return 3;
+}
+
+function isHttpUrl(url?: string): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 function getTierMeta(tierNum: number) {
@@ -69,7 +73,7 @@ function getRelationMeta(relation?: string) {
       icon: '❌',
     };
   }
-  if (norm === 'background' || norm === 'context') {
+  if (norm === 'background') {
     return {
       label: 'Background',
       badge: 'bg-blue-100 text-blue-900 border-blue-300 dark:bg-blue-950/60 dark:text-blue-200 dark:border-blue-800',
@@ -77,7 +81,7 @@ function getRelationMeta(relation?: string) {
     };
   }
   return {
-    label: 'Unrelated / Neutral',
+    label: 'Unrelated',
     badge: 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
     icon: '⚪',
   };
@@ -135,12 +139,12 @@ export default function SourcesPanel({ result }: { result: AnalysisResult }) {
   // Filter out unrelated unless toggled
   const relevantSources = sortedSources.filter((s) => {
     const rel = (s.relation || '').toLowerCase();
-    return rel === 'supports' || rel === 'contradicts' || rel === 'background' || rel === 'context';
+    return rel === 'supports' || rel === 'contradicts' || rel === 'background';
   });
 
   const unrelatedSources = sortedSources.filter((s) => {
     const rel = (s.relation || '').toLowerCase();
-    return rel !== 'supports' && rel !== 'contradicts' && rel !== 'background' && rel !== 'context';
+    return rel !== 'supports' && rel !== 'contradicts' && rel !== 'background';
   });
 
   const displayedSources = showUnrelated
@@ -224,15 +228,21 @@ export default function SourcesPanel({ result }: { result: AnalysisResult }) {
                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   {source.publisher || source.domain || 'Source Publisher'}
                 </div>
-                <a
-                  href={source.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-1 inline-flex items-center gap-1.5 text-base font-bold text-slate-900 hover:text-teal-600 dark:text-slate-100 dark:hover:text-teal-400 transition-colors"
-                >
-                  <span>{source.title || source.url}</span>
-                  <ExternalLink className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-teal-600 dark:group-hover:text-teal-400" />
-                </a>
+                {isHttpUrl(source.url) ? (
+                  <a
+                    href={source.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-flex items-center gap-1.5 text-base font-bold text-slate-900 hover:text-teal-600 dark:text-slate-100 dark:hover:text-teal-400 transition-colors"
+                  >
+                    <span>{source.title || source.url}</span>
+                    <ExternalLink className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-teal-600 dark:group-hover:text-teal-400" />
+                  </a>
+                ) : (
+                  <p className="mt-1 text-base font-bold text-slate-900 dark:text-slate-100">
+                    {source.title || source.domain || 'Untitled source'}
+                  </p>
+                )}
               </div>
 
               {/* Quoted Snippet */}

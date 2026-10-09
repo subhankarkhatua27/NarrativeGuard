@@ -40,23 +40,22 @@ export default function Examples() {
                 <div className="mb-1 flex items-center gap-2">
                   <span
                     className={`inline-block h-2 w-2 rounded-full ${
-                      ex.verdict === 'contradicted'
+                      ex.expected_verdict === 'contradicted'
                         ? 'bg-red-500'
-                        : ex.verdict === 'misleading'
+                        : ex.expected_verdict === 'misleading'
                           ? 'bg-amber-500'
-                          : ex.verdict === 'too_new'
+                          : ex.expected_verdict === 'too_new'
                             ? 'bg-blue-500'
                             : 'bg-slate-400'
                     }`}
                   />
                   <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                    {ex.verdict.replace('_', ' ')}
+                    {(ex.expected_verdict || 'example').replace('_', ' ')}
                   </span>
                 </div>
                 <h2 className="text-sm font-semibold text-slate-800 group-hover:text-teal-700">
-                  {ex.title}
+                  {ex.claim || ex.id}
                 </h2>
-                <p className="mt-1 text-xs leading-relaxed text-slate-500">{ex.snippet}</p>
               </div>
             </div>
           </Link>

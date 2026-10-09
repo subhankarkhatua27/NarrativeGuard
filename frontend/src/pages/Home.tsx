@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Turnstile, type TurnstileInstance } from '@marsidev/react-turnstile';
 import { ShieldCheck, Loader2, Send, Lock } from 'lucide-react';
 import { checkClaim, getExamples, preWarm } from '@/lib/api';
@@ -13,6 +13,7 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
   invalid_input: 'Message is too short or too long.',
   captcha_missing: 'Please complete the verification.',
   captcha_failed: 'Verification failed, try again.',
+  captcha_unavailable: 'Verification is unavailable right now. Try again later.',
   ip_hour: 'You have reached the check limit for now. Try again later or browse examples.',
   ip_day: 'You have reached the check limit for now. Try again later or browse examples.',
   global_day:
@@ -20,10 +21,23 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
   n8n_offline: '',
 };
 
+function storeJobMessage(jobId: string, message: string) {
+  try {
+    sessionStorage.setItem(`ng:msg:${jobId}`, message);
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
 export default function Home() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const routerState = location.state as { text?: string; force?: boolean } | null;
 
-  const [text, setText] = useState('');
+  const [text, setText] = useState(
+    typeof routerState?.text === 'string' ? routerState.text : '',
+  );
+  const [force] = useState(Boolean(routerState?.force));
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -34,7 +48,6 @@ export default function Home() {
   const turnstileRef = useRef<TurnstileInstance | undefined>(undefined);
   const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Pre-warm backend on mount + load examples
   useEffect(() => {
     preWarm();
     getExamples()
@@ -57,43 +70,46 @@ export default function Home() {
       setShowSlowNotice(false);
       setLoading(true);
 
-      // Start 4-second timer for slow-notice
       slowTimerRef.current = setTimeout(() => {
         setShowSlowNotice(true);
       }, 4000);
 
+      const trimmed = text.trim();
+
       try {
         const res = await checkClaim({
-          text: text.trim(),
-          captcha_token: captchaToken ?? undefined,
+          text: trimmed,
+          force: force || undefined,
+          turnstile_token: captchaToken ?? undefined,
         });
 
-        // Clear slow timer
         if (slowTimerRef.current) {
           clearTimeout(slowTimerRef.current);
           slowTimerRef.current = null;
         }
 
-        // Case 1: from_cache with job_id → navigate to /r/:id
-        if (res.job_id && res.from_cache) {
-          navigate(`/r/${res.job_id}`);
-          return;
-        }
+        resetCaptcha();
 
-        // Case 2: seen_before.found and job_id null → navigate to /r/new with state
-        if (res.seen_before.found && res.job_id === null) {
-          navigate('/r/new', { state: { response: res } });
-          return;
-        }
-
-        // Case 3: new job_id → navigate to /r/:id
         if (res.job_id) {
-          navigate(`/r/${res.job_id}`);
+          storeJobMessage(res.job_id, trimmed);
+        }
+
+        if (res.job_id && res.from_cache) {
+          navigate(`/r/${res.job_id}`, { state: { text: trimmed } });
           return;
         }
 
-        // Fallback: shouldn't happen, but navigate to /r/new
-        navigate('/r/new', { state: { response: res } });
+        if (res.seen_before?.found && res.job_id === null) {
+          navigate('/r/new', { state: { response: res, text: trimmed, force } });
+          return;
+        }
+
+        if (res.job_id) {
+          navigate(`/r/${res.job_id}`, { state: { text: trimmed } });
+          return;
+        }
+
+        navigate('/r/new', { state: { response: res, text: trimmed, force } });
       } catch (err: unknown) {
         if (slowTimerRef.current) {
           clearTimeout(slowTimerRef.current);
@@ -111,7 +127,7 @@ export default function Home() {
         resetCaptcha();
       }
     },
-    [captchaToken, loading, navigate, resetCaptcha, text],
+    [captchaToken, force, loading, navigate, resetCaptcha, text],
   );
 
   const charCount = text.length;
@@ -126,7 +142,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Hero */}
       <div className="mb-8 text-center sm:mb-10">
         <div className="mb-4 inline-flex items-center justify-center rounded-2xl bg-teal-50 p-3">
           <ShieldCheck className="h-8 w-8 text-teal-600" />
@@ -140,7 +155,6 @@ export default function Home() {
         </p>
       </div>
 
-      {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm focus-within:border-teal-400 focus-within:ring-2 focus-within:ring-teal-100">
           <textarea
@@ -163,7 +177,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Turnstile widget — only if site key is present */}
         {TURNSTILE_SITE_KEY && (
           <div className="flex justify-center">
             <Turnstile
@@ -177,7 +190,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Submit button */}
         <div className="flex flex-col items-center gap-3">
           <button
             type="submit"
@@ -197,21 +209,18 @@ export default function Home() {
             )}
           </button>
 
-          {/* Slow notice */}
           {showSlowNotice && loading && (
             <p className="text-center text-xs text-slate-500">
               Waking up the server (free hosting can take up to a minute)...
             </p>
           )}
 
-          {/* Error message */}
           {errorMsg && (
             <p className="text-center text-sm font-medium text-red-600">{errorMsg}</p>
           )}
         </div>
       </form>
 
-      {/* Privacy note */}
       <div className="mt-6 flex items-start gap-2 rounded-lg bg-slate-100 px-4 py-3">
         <Lock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
         <p className="text-xs leading-relaxed text-slate-500">
@@ -220,7 +229,6 @@ export default function Home() {
         </p>
       </div>
 
-      {/* Example chips */}
       {examples.length > 0 && (
         <div className="mt-10">
           <div className="flex items-center justify-between mb-3">
@@ -232,34 +240,36 @@ export default function Home() {
             </span>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {examples.map((ex) => (
-              <button
-                key={ex.id}
-                onClick={() => navigate(`/e/${ex.id}`)}
-                className="group rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:border-teal-300 hover:shadow-md"
-              >
-                <div className="mb-1 flex items-center gap-2">
-                  <span
-                    className={`inline-block h-2 w-2 rounded-full ${
-                      ex.verdict === 'contradicted'
-                        ? 'bg-red-500'
-                        : ex.verdict === 'misleading'
-                          ? 'bg-amber-500'
-                          : ex.verdict === 'too_new'
-                            ? 'bg-blue-500'
-                            : 'bg-slate-400'
-                    }`}
-                  />
-                  <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                    {ex.verdict.replace('_', ' ')}
-                  </span>
-                </div>
-                <p className="text-sm font-semibold text-slate-800 group-hover:text-teal-700">
-                  {ex.title}
-                </p>
-                <p className="mt-1 text-xs leading-relaxed text-slate-500">{ex.snippet}</p>
-              </button>
-            ))}
+            {examples.map((ex) => {
+              const verdict = (ex.expected_verdict || '').toLowerCase();
+              return (
+                <button
+                  key={ex.id}
+                  onClick={() => navigate(`/e/${ex.id}`)}
+                  className="group rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:border-teal-300 hover:shadow-md"
+                >
+                  <div className="mb-1 flex items-center gap-2">
+                    <span
+                      className={`inline-block h-2 w-2 rounded-full ${
+                        verdict === 'contradicted'
+                          ? 'bg-red-500'
+                          : verdict === 'misleading'
+                            ? 'bg-amber-500'
+                            : verdict === 'too_new'
+                              ? 'bg-blue-500'
+                              : 'bg-slate-400'
+                      }`}
+                    />
+                    <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                      {(ex.expected_verdict || 'example').replace('_', ' ')}
+                    </span>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-800 group-hover:text-teal-700">
+                    {ex.claim || ex.id}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

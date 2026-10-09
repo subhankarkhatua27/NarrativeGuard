@@ -46,20 +46,30 @@ function getNodeStatus(
   }
 
   const event = stagesMap.get(node.stage);
-  if (event?.done) return 'done';
+  if (event?.status === 'done') return 'done';
 
-  // If a later stage order is active or recorded, mark earlier non-search nodes as done
+  const postSearchStarted = PIPELINE.some((n) => {
+    if (n.order < 20) return false;
+    const ev = stagesMap.get(n.stage);
+    return n.stage === activeStage || ev?.status === 'done' || Boolean(ev);
+  });
+  if (node.isSearch && postSearchStarted) return 'done';
+
   if (activeStage) {
     const activeNode = PIPELINE.find((n) => n.stage === activeStage);
     if (activeNode && node.order < activeNode.order) {
+      if (node.isSearch && activeNode.isSearch) {
+        return event ? 'active' : 'pending';
+      }
       return 'done';
     }
   }
 
-  // Check if any stage with higher order exists in stagesMap
   for (const [stgKey, stgEvt] of stagesMap.entries()) {
     const stgNode = PIPELINE.find((n) => n.stage === stgKey);
-    if (stgNode && stgNode.order > node.order && (stgEvt?.done || stgKey === activeStage)) {
+    if (!stgNode || stgNode.order <= node.order) continue;
+    if (node.isSearch && stgNode.isSearch) continue;
+    if (stgEvt?.status === 'done' || stgKey === activeStage) {
       return 'done';
     }
   }
@@ -75,10 +85,6 @@ function getDetailText(event: StageEvent | undefined, isSearch: boolean): string
   const count = event.detail.count;
   if (isSearch && typeof count === 'number') {
     return count === 1 ? '1 result found' : `${count} results found`;
-  }
-  if (event.detail.text && typeof event.detail.text === 'string' && event.detail.text.trim().length > 0) {
-    const text = event.detail.text.trim();
-    return text.length > 80 ? `${text.slice(0, 77)}...` : text;
   }
   return null;
 }

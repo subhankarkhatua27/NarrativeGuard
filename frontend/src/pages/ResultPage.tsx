@@ -19,6 +19,34 @@ type ViewState =
 const NO_EVENT_TIMEOUT_MS = 15_000;
 const POLL_INTERVAL_MS = 2_000;
 
+function jobErrorMessage(error: unknown): string {
+  if (typeof error === 'string' && error.trim()) return error;
+  if (error && typeof error === 'object') {
+    const rec = error as { message?: unknown };
+    if (typeof rec.message === 'string' && rec.message.trim()) return rec.message;
+  }
+  return 'Analysis failed. Please try again.';
+}
+
+function readOriginalText(
+  jobId: string | undefined,
+  locationState: unknown,
+): string | null {
+  const state = locationState as { text?: unknown } | null;
+  if (typeof state?.text === 'string' && state.text.trim()) {
+    return state.text;
+  }
+  if (jobId && jobId !== 'new') {
+    try {
+      const stored = sessionStorage.getItem(`ng:msg:${jobId}`);
+      if (stored && stored.trim()) return stored;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 export default function ResultPage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
@@ -28,7 +56,6 @@ export default function ResultPage() {
   const [activeStage, setActiveStage] = useState<StageName | null>(null);
   const [elapsed, setElapsed] = useState(0);
 
-  // Refs for stream lifecycle and timers
   const streamDisposerRef = useRef<(() => void) | null>(null);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const watchdogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -36,11 +63,10 @@ export default function ResultPage() {
   const lastEventTimeRef = useRef<number>(Date.now());
   const isSettledRef = useRef<boolean>(false);
 
-  // Router state check for /r/new or cached result
   const routerState = location.state as { response?: { result?: AnalysisResult } } | null;
   const isNewRoute = id === 'new';
+  const originalText = readOriginalText(id, location.state);
 
-  // ---- Cleanup all active streams and timers ----
   const stopAllServices = useCallback(() => {
     if (streamDisposerRef.current) {
       streamDisposerRef.current();
@@ -60,16 +86,14 @@ export default function ResultPage() {
     }
   }, []);
 
-  // ---- Polling fallback (runs if SSE fails or times out) ----
   const startPollingFallback = useCallback(
     (jobId: string) => {
-      // Disconnect SSE stream if open
       if (streamDisposerRef.current) {
         streamDisposerRef.current();
         streamDisposerRef.current = null;
       }
 
-      if (pollingTimerRef.current) return; // already polling
+      if (pollingTimerRef.current) return;
 
       const pollJob = async () => {
         if (isSettledRef.current) return;
@@ -77,7 +101,7 @@ export default function ResultPage() {
           const res = await getJob(jobId);
           if (isSettledRef.current) return;
 
-          const isDone = res?.status === 'completed';
+          const isDone = res?.status === 'done';
           if (isDone && res?.result) {
             isSettledRef.current = true;
             stopAllServices();
@@ -87,7 +111,7 @@ export default function ResultPage() {
             stopAllServices();
             setView({
               kind: 'error',
-              message: res?.error?.message || 'Analysis failed. Please try again.',
+              message: jobErrorMessage(res?.error),
             });
           }
         } catch {
@@ -95,14 +119,12 @@ export default function ResultPage() {
         }
       };
 
-      // Poll immediately and start interval
       pollJob();
       pollingTimerRef.current = setInterval(pollJob, POLL_INTERVAL_MS);
     },
     [stopAllServices],
   );
 
-  // ---- Watchdog timer: fallback to polling if 15s pass without an event ----
   const resetWatchdogTimer = useCallback(
     (jobId: string) => {
       if (watchdogTimerRef.current) {
@@ -118,7 +140,6 @@ export default function ResultPage() {
     [startPollingFallback],
   );
 
-  // ---- Open SSE Stream connection ----
   const startStreamConnection = useCallback(
     (jobId: string) => {
       lastEventTimeRef.current = Date.now();
@@ -126,7 +147,6 @@ export default function ResultPage() {
 
       streamDisposerRef.current = openStream(
         jobId,
-        // onStage
         (event: StageEvent) => {
           if (isSettledRef.current) return;
           lastEventTimeRef.current = Date.now();
@@ -135,13 +155,12 @@ export default function ResultPage() {
           if (event && event.stage) {
             setStages((prev) => {
               const next = new Map(prev);
-              next.set(event.stage, event);
+              next.set(event.stage as StageName, event);
               return next;
             });
-            setActiveStage(event.stage);
+            setActiveStage(event.stage as StageName);
           }
         },
-        // onResult: ALWAYS close stream & render result
         (result: AnalysisResult) => {
           if (!isSettledRef.current) {
             isSettledRef.current = true;
@@ -149,7 +168,6 @@ export default function ResultPage() {
             setView({ kind: 'result', result });
           }
         },
-        // onFailed: ALWAYS close stream & show error
         (error: { code: string; message: string }) => {
           if (!isSettledRef.current) {
             isSettledRef.current = true;
@@ -160,7 +178,6 @@ export default function ResultPage() {
             });
           }
         },
-        // onError: Stream error fallback to polling
         (_err: Error) => {
           if (!isSettledRef.current) {
             startPollingFallback(jobId);
@@ -171,7 +188,6 @@ export default function ResultPage() {
     [resetWatchdogTimer, stopAllServices, startPollingFallback],
   );
 
-  // ---- Elapsed timer ----
   const startElapsedTimer = useCallback(() => {
     if (elapsedTimerRef.current) return;
     const startTime = Date.now();
@@ -180,7 +196,6 @@ export default function ResultPage() {
     }, 1000);
   }, []);
 
-  // ---- Initialization Effect ----
   useEffect(() => {
     isSettledRef.current = false;
     setStages(new Map());
@@ -213,7 +228,7 @@ export default function ResultPage() {
         const res = await getJob(id);
         if (isCancelled) return;
 
-        const isDone = res?.status === 'completed';
+        const isDone = res?.status === 'done';
         if (isDone && res?.result) {
           isSettledRef.current = true;
           setView({ kind: 'result', result: res.result });
@@ -221,10 +236,9 @@ export default function ResultPage() {
           isSettledRef.current = true;
           setView({
             kind: 'error',
-            message: res?.error?.message || 'Analysis failed. Please try again.',
+            message: jobErrorMessage(res?.error),
           });
         } else {
-          // queued or running -> show progress and start stream
           setView({ kind: 'progress' });
           startElapsedTimer();
           startStreamConnection(id);
@@ -245,14 +259,12 @@ export default function ResultPage() {
     };
   }, [id, isNewRoute, routerState, startElapsedTimer, startStreamConnection, stopAllServices]);
 
-  // Lifecycle cleanup
   useEffect(() => {
     return () => {
       stopAllServices();
     };
   }, [stopAllServices]);
 
-  // ---- Views ----
   if (view.kind === 'loading') {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center sm:px-6">
@@ -273,5 +285,5 @@ export default function ResultPage() {
     );
   }
 
-  return <ResultView result={view.result} />;
+  return <ResultView result={view.result} originalText={originalText} />;
 }

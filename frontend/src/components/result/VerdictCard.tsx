@@ -11,9 +11,9 @@ import {
   Quote,
   RefreshCw,
   AlertTriangle,
-  Info,
+  Tag,
 } from 'lucide-react';
-import type { AnalysisResult, VerdictKey } from '@/lib/types';
+import type { AnalysisResult, MutationType, VerdictKey } from '@/lib/types';
 
 interface VerdictConfig {
   label: string;
@@ -29,133 +29,134 @@ const VERDICT_CONFIGS: Record<VerdictKey, VerdictConfig> = {
   contradicted: {
     label: 'Contradicted',
     icon: ShieldX,
-    bg: 'bg-red-50/90 dark:bg-red-950/40',
-    border: 'border-red-200 dark:border-red-900/50',
+    bg: 'bg-red-50/90',
+    border: 'border-red-200',
     badgeBg: 'bg-red-600 text-white',
-    textColor: 'text-red-950 dark:text-red-200',
+    textColor: 'text-red-950',
     badgeText: 'Proven False',
   },
   misleading: {
     label: 'Misleading',
     icon: ShieldAlert,
-    bg: 'bg-amber-50/90 dark:bg-amber-950/40',
-    border: 'border-amber-200 dark:border-amber-900/50',
+    bg: 'bg-amber-50/90',
+    border: 'border-amber-200',
     badgeBg: 'bg-amber-600 text-white',
-    textColor: 'text-amber-950 dark:text-amber-200',
+    textColor: 'text-amber-950',
     badgeText: 'Context Missing',
   },
   disputed: {
     label: 'Disputed',
     icon: AlertCircle,
-    bg: 'bg-purple-50/90 dark:bg-purple-950/40',
-    border: 'border-purple-200 dark:border-purple-900/50',
+    bg: 'bg-purple-50/90',
+    border: 'border-purple-200',
     badgeBg: 'bg-purple-600 text-white',
-    textColor: 'text-purple-950 dark:text-purple-200',
+    textColor: 'text-purple-950',
     badgeText: 'Conflicting Sources',
   },
   too_new: {
     label: 'Too New to Verify',
     icon: Clock,
-    bg: 'bg-blue-50/90 dark:bg-blue-950/40',
-    border: 'border-blue-200 dark:border-blue-900/50',
+    bg: 'bg-blue-50/90',
+    border: 'border-blue-200',
     badgeBg: 'bg-blue-600 text-white',
-    textColor: 'text-blue-950 dark:text-blue-200',
+    textColor: 'text-blue-950',
     badgeText: 'Developing Story',
   },
   unverifiable: {
     label: 'Unverifiable',
     icon: HelpCircle,
-    bg: 'bg-slate-50/90 dark:bg-slate-900/50',
-    border: 'border-slate-200 dark:border-slate-800',
+    bg: 'bg-slate-50/90',
+    border: 'border-slate-200',
     badgeBg: 'bg-slate-600 text-white',
-    textColor: 'text-slate-900 dark:text-slate-200',
+    textColor: 'text-slate-900',
     badgeText: 'Insufficient Proof',
   },
   supported: {
     label: 'Supported',
     icon: ShieldCheck,
-    bg: 'bg-emerald-50/90 dark:bg-emerald-950/40',
-    border: 'border-emerald-200 dark:border-emerald-900/50',
+    bg: 'bg-emerald-50/90',
+    border: 'border-emerald-200',
     badgeBg: 'bg-emerald-600 text-white',
-    textColor: 'text-emerald-950 dark:text-emerald-200',
+    textColor: 'text-emerald-950',
     badgeText: 'Verified True',
   },
   not_checkable: {
     label: 'Not Checkable',
     icon: FileText,
-    bg: 'bg-neutral-50/90 dark:bg-neutral-900/50',
-    border: 'border-neutral-200 dark:border-neutral-800',
+    bg: 'bg-neutral-50/90',
+    border: 'border-neutral-200',
     badgeBg: 'bg-neutral-600 text-white',
-    textColor: 'text-neutral-900 dark:text-neutral-200',
+    textColor: 'text-neutral-900',
     badgeText: 'Opinion / Personal',
+  },
+};
+
+const MUTATION_CHIPS: Record<string, { label: string; color: string }> = {
+  fabrication: {
+    label: 'Fabrication',
+    color: 'bg-red-100 text-red-900 border-red-300',
+  },
+  reframing: {
+    label: 'Reframing',
+    color: 'bg-purple-100 text-purple-900 border-purple-300',
+  },
+  exaggeration: {
+    label: 'Exaggeration',
+    color: 'bg-amber-100 text-amber-900 border-amber-300',
+  },
+  omission: {
+    label: 'Omission',
+    color: 'bg-orange-100 text-orange-900 border-orange-300',
+  },
+  old_news: {
+    label: 'Old news',
+    color: 'bg-blue-100 text-blue-900 border-blue-300',
+  },
+  false_context: {
+    label: 'False context',
+    color: 'bg-rose-100 text-rose-900 border-rose-300',
   },
 };
 
 const DEFAULT_CONFIG: VerdictConfig = VERDICT_CONFIGS.unverifiable;
 
 function resolveVerdictKey(result: AnalysisResult): VerdictKey {
-  if (result.verdict_key && VERDICT_CONFIGS[result.verdict_key]) {
-    return result.verdict_key;
+  const key = (result.verdict_key || '').toLowerCase() as VerdictKey;
+  if (key && VERDICT_CONFIGS[key]) {
+    return key;
   }
   const v = (result.verdict || '').toLowerCase();
   if (v.includes('contradict') || v.includes('false')) return 'contradicted';
   if (v.includes('mislead')) return 'misleading';
   if (v.includes('dispute')) return 'disputed';
-  if (v.includes('too new') || v.includes('new')) return 'too_new';
+  if (v.includes('too new') || v.includes('too_new')) return 'too_new';
   if (v.includes('support') || v.includes('true')) return 'supported';
-  if (v.includes('not checkable')) return 'not_checkable';
+  if (v.includes('not checkable') || v.includes('not_checkable')) return 'not_checkable';
   return 'unverifiable';
 }
 
-function getAdviceStyles(advice?: string): { bg: string; text: string; icon: string } {
-  const norm = (advice || '').toLowerCase();
+function getAdviceStyles(advice: string): { bg: string; text: string } {
+  const norm = advice.toLowerCase();
   if (norm.includes("don't forward") || norm.includes('dont forward') || norm.includes('do not')) {
-    return {
-      bg: 'bg-red-600 text-white shadow-sm shadow-red-200',
-      text: advice || "Don't forward",
-      icon: '🛑',
-    };
+    return { bg: 'bg-red-600 text-white shadow-sm shadow-red-200', text: advice };
   }
   if (norm.includes('wait')) {
-    return {
-      bg: 'bg-amber-600 text-white shadow-sm shadow-amber-200',
-      text: advice || 'Wait for verification',
-      icon: '⏳',
-    };
+    return { bg: 'bg-amber-600 text-white shadow-sm shadow-amber-200', text: advice };
   }
   if (norm.includes('safe to share')) {
-    return {
-      bg: 'bg-emerald-600 text-white shadow-sm shadow-emerald-200',
-      text: advice || 'Safe to share with source',
-      icon: '✅',
-    };
+    return { bg: 'bg-emerald-600 text-white shadow-sm shadow-emerald-200', text: advice };
   }
   if (norm.includes('opinion')) {
-    return {
-      bg: 'bg-purple-600 text-white shadow-sm shadow-purple-200',
-      text: advice || 'Share as opinion, not as fact',
-      icon: '💬',
-    };
+    return { bg: 'bg-purple-600 text-white shadow-sm shadow-purple-200', text: advice };
   }
-  return {
-    bg: 'bg-slate-700 text-white shadow-sm',
-    text: advice || 'Exercise caution before sharing',
-    icon: '⚠️',
-  };
+  return { bg: 'bg-slate-700 text-white shadow-sm', text: advice };
 }
 
-function formatAsOf(asOfStr?: string, fallbackStr?: string): string {
-  const dateVal = asOfStr || fallbackStr;
-  if (!dateVal) {
-    return new Date().toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }
+function formatAsOf(asOfStr?: string): string | null {
+  if (!asOfStr) return null;
   try {
-    const d = new Date(dateVal);
-    if (isNaN(d.getTime())) return dateVal;
+    const d = new Date(asOfStr);
+    if (isNaN(d.getTime())) return asOfStr;
     return `${d.toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
@@ -165,8 +166,17 @@ function formatAsOf(asOfStr?: string, fallbackStr?: string): string {
       minute: '2-digit',
     })}`;
   } catch {
-    return dateVal;
+    return asOfStr;
   }
+}
+
+function mutationChip(mut: MutationType | string) {
+  const key = String(mut).toLowerCase().trim();
+  if (MUTATION_CHIPS[key]) return MUTATION_CHIPS[key];
+  return {
+    label: String(mut).replace(/_/g, ' '),
+    color: 'bg-slate-100 text-slate-800 border-slate-300',
+  };
 }
 
 export default function VerdictCard({ result }: { result: AnalysisResult }) {
@@ -175,19 +185,15 @@ export default function VerdictCard({ result }: { result: AnalysisResult }) {
   const Icon = config.icon;
 
   const displayVerdict = result.verdict || config.label;
-  const claimText = result.claim || result.claim_text || result.cleaned_text || '';
-  const basisText = result.basis || 'No basis narrative provided for this evaluation.';
-  const whatWouldChange =
-    result.what_would_change ||
-    'Official gazette notifications, primary government releases, or multi-source confirmation.';
-  const adviceInfo = getAdviceStyles(result.advice);
-  const formattedTime = formatAsOf(result.as_of, result.created_at);
+  const claimText = result.claim || '';
+  const formattedTime = formatAsOf(result.as_of);
+  const mutations = result.mutations || [];
+  const advice = result.advice?.trim() ? getAdviceStyles(result.advice) : null;
 
   return (
     <div
       className={`relative overflow-hidden rounded-2xl border ${config.border} ${config.bg} p-6 sm:p-8 shadow-sm transition-all`}
     >
-      {/* Top Header: Verdict Icon, Label, Badge, As-of Time */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3.5">
           <div
@@ -206,87 +212,89 @@ export default function VerdictCard({ result }: { result: AnalysisResult }) {
                 {config.badgeText}
               </span>
             </div>
-            <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-              <Calendar className="h-3.5 w-3.5" />
-              As of {formattedTime}
-            </p>
+            {formattedTime && (
+              <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                <Calendar className="h-3.5 w-3.5" />
+                As of {formattedTime}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Confidence pill if present */}
-        {typeof result.confidence === 'number' && (
-          <div className="self-start sm:self-auto rounded-lg bg-white/80 dark:bg-slate-800/80 px-3 py-1.5 border border-slate-200/60 dark:border-slate-700 backdrop-blur-sm text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-2xs">
-            Confidence: {Math.round(result.confidence * 100)}%
-          </div>
+        {advice && (
+          <span
+            className={`inline-flex items-center self-start rounded-full px-4 py-2 text-xs font-bold ${advice.bg}`}
+          >
+            {advice.text}
+          </span>
         )}
       </div>
 
-      {/* Recycled / Old News Alert Chip */}
       {result.old_news === 'possibly_old' && (
-        <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-amber-300/80 bg-amber-100/90 dark:bg-amber-950/60 p-3.5 text-xs text-amber-950 dark:text-amber-200 shadow-2xs">
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400 mt-0.5" />
+        <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-amber-300/80 bg-amber-100/90 p-3.5 text-xs text-amber-950 shadow-2xs">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700 mt-0.5" />
           <div>
-            <span className="font-bold">⏰ Recycled Claim / Possibly Old News:</span> This message appears to recycle content from a past event or older publication. It may be circulating out of original context.
+            <span className="font-bold">Possibly old news:</span> This message may recycle an older event or publication out of context.
+            {result.earliest_date ? ` Earliest date seen: ${result.earliest_date}.` : ''}
           </div>
         </div>
       )}
 
-      {/* Claim in Quotes */}
+      {mutations.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="flex items-center gap-1 text-xs font-semibold text-slate-500">
+            <Tag className="h-3.5 w-3.5" /> How it was twisted
+          </span>
+          {mutations.map((mut, idx) => {
+            const meta = mutationChip(mut);
+            return (
+              <span
+                key={idx}
+                className={`inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold ${meta.color}`}
+              >
+                {meta.label}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       {claimText && (
-        <div className="mt-6 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/80 p-4.5 shadow-2xs">
-          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+        <div className="mt-6 rounded-xl border border-slate-200/80 bg-white/90 p-4.5 shadow-2xs">
+          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
             <Quote className="h-3.5 w-3.5 text-slate-400" />
-            Analyzed Message
+            Claim
           </div>
-          <p className="text-sm font-medium italic text-slate-800 dark:text-slate-200 leading-relaxed">
+          <p className="text-sm font-medium italic text-slate-800 leading-relaxed">
             "{claimText}"
           </p>
         </div>
       )}
 
-      {/* Basis Narrative */}
-      <div className="mt-6">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          Fact-Check Assessment
-        </h2>
-        <p className="mt-2 text-base leading-relaxed font-normal text-slate-900 dark:text-slate-100">
-          {basisText}
-        </p>
-      </div>
+      {result.basis && (
+        <div className="mt-6">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Fact-Check Assessment
+          </h2>
+          <p className="mt-2 text-base leading-relaxed font-normal text-slate-900">
+            {result.basis}
+          </p>
+        </div>
+      )}
 
-      {/* Two-Column Block: What would change this & Advice */}
-      <div className="mt-7 grid gap-4 border-t border-slate-200/60 dark:border-slate-800/80 pt-6 md:grid-cols-2">
-        {/* Column 1: What would change this */}
-        <div className="flex flex-col justify-between rounded-xl bg-white/80 dark:bg-slate-900/60 p-4 border border-slate-200/60 dark:border-slate-800">
-          <div>
-            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
-              <RefreshCw className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
-              What Would Change This Verdict?
+      {result.what_would_change && (
+        <div className="mt-7 border-t border-slate-200/60 pt-6">
+          <div className="rounded-xl bg-white/80 p-4 border border-slate-200/60">
+            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-600">
+              <RefreshCw className="h-3.5 w-3.5 text-teal-600" />
+              What would change this verdict
             </div>
-            <p className="mt-2 text-xs leading-relaxed text-slate-700 dark:text-slate-300">
-              {whatWouldChange}
+            <p className="mt-2 text-xs leading-relaxed text-slate-700">
+              {result.what_would_change}
             </p>
           </div>
         </div>
-
-        {/* Column 2: Advice Pill */}
-        <div className="flex flex-col justify-between rounded-xl bg-white/80 dark:bg-slate-900/60 p-4 border border-slate-200/60 dark:border-slate-800">
-          <div>
-            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
-              <Info className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
-              Actionable Guidance
-            </div>
-            <div className="mt-3 flex items-center">
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold ${adviceInfo.bg}`}
-              >
-                <span>{adviceInfo.icon}</span>
-                <span>{adviceInfo.text}</span>
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
