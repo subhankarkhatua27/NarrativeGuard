@@ -223,11 +223,16 @@ export default function Home() {
       {/* Example chips */}
       {examples.length > 0 && (
         <div className="mt-10">
-          <h2 className="mb-3 text-center text-sm font-semibold text-slate-700">
-            Or try an example
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-slate-700">
+              Try UI Test Inputs & Examples
+            </h2>
+            <span className="text-xs text-slate-500 font-medium">
+              {examples.length} test scenarios available
+            </span>
+          </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {examples.slice(0, 4).map((ex) => (
+            {examples.map((ex) => (
               <button
                 key={ex.id}
                 onClick={() => navigate(`/e/${ex.id}`)}

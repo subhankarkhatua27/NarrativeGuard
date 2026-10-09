@@ -35,7 +35,7 @@ export type MutationType =
   | 'false_context'
   | string;
 
-export type SourceTier = 'T1' | 'T2' | 'T3' | 1 | 2 | 3 | 4;
+export type SourceTier = 'T1' | 'T2' | 'T3' | 'T4' | 1 | 2 | 3 | 4;
 
 export type SourceRelation =
   | 'supports'

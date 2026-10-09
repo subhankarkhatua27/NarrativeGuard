@@ -269,7 +269,339 @@ const mockD: AnalysisResult = {
   created_at: '2024-09-03T12:00:00Z',
 };
 
+// ---- UI Test Mock Results ----
+
+const mockTestContradicted: AnalysisResult = {
+  verdict: 'contradicted',
+  verdict_key: 'contradicted',
+  confidence: 0.92,
+  basis: 'Official records confirm no such emergency wealth tax policy was approved by Parliament. Ministry press releases explicitly deny the claim.',
+  claim: 'Government announces 50% surprise emergency wealth tax starting tomorrow.',
+  claim_text: 'Government announces 50% surprise emergency wealth tax starting tomorrow.',
+  cleaned_text: 'Government announces 50% surprise emergency wealth tax starting tomorrow.',
+  as_of: '2026-10-09T10:00:00Z',
+  what_would_change: 'Official gazette notification or Ministry statement.',
+  advice: "Don't forward",
+  old_news: 'recent',
+  verified_fact: {
+    text: 'Ministry of Finance has not announced any emergency wealth tax.',
+    summary: 'Wealth tax claim is completely false.',
+    evidence_ids: ['E1'],
+  },
+  sources: [
+    {
+      id: 'E1',
+      url: 'https://pib.gov.in/PressReleasePage.aspx?PRID=1900000',
+      title: 'PIB Fact Check: Clarification on viral wealth tax rumor',
+      publisher: 'PIB Fact Check',
+      date: '2026-10-08',
+      tier: 'T1',
+      relation: 'contradicts',
+      snippet: 'No emergency wealth tax has been proposed or approved by the government. The claim is false.',
+    },
+  ],
+};
+
+const mockTestRecycledNews: AnalysisResult = {
+  verdict: 'misleading',
+  verdict_key: 'misleading',
+  confidence: 0.85,
+  basis: 'This video footage is from a 2021 industrial accident in another state, recycled as recent breaking events.',
+  claim: 'Breaking video of dam collapse causing widespread flooding right now.',
+  claim_text: 'Breaking video of dam collapse causing widespread flooding right now.',
+  cleaned_text: 'Breaking video of dam collapse causing widespread flooding right now.',
+  advice: 'Wait',
+  old_news: 'possibly_old',
+  as_of: '2026-10-08T15:30:00Z',
+  red_flags: [
+    { type: 'recycled_claim', tactic: 'viral_pattern', span: 'Breaking video of dam collapse', text: 'Uses old footage presented as live events.' },
+  ],
+};
+
+const mockTestDisputed: AnalysisResult = {
+  verdict: 'disputed',
+  verdict_key: 'disputed',
+  confidence: 0.65,
+  basis: 'Independent investigative reports offer conflicting accounts regarding the cause of the power grid failure.',
+  claim: 'Cyber attack confirmed as cause of nationwide power grid failure.',
+  claim_text: 'Cyber attack confirmed as cause of nationwide power grid failure.',
+  cleaned_text: 'Cyber attack confirmed as cause of nationwide power grid failure.',
+  advice: 'Share as opinion, not as fact',
+  what_would_change: 'Joint audit report from regulatory authorities.',
+  sources: [
+    {
+      id: 'E1',
+      title: 'Cybersecurity agency investigates cyber attack link',
+      publisher: 'Tech Security Daily',
+      url: 'https://securitydaily.example.com/grid',
+      date: '2026-10-07',
+      tier: 'T2',
+      relation: 'supports',
+      snippet: 'Preliminary intrusion signatures indicate potential foreign cyber activity on grid nodes.',
+    },
+    {
+      id: 'E2',
+      title: 'Energy Ministry attributes outage to transformer overload',
+      publisher: 'Energy Ministry Press Release',
+      url: 'https://energyministry.example.gov/release',
+      date: '2026-10-07',
+      tier: 'T1',
+      relation: 'contradicts',
+      snippet: 'Initial investigation shows severe heatwave overloaded main transformer station B-4.',
+    },
+  ],
+};
+
+const mockTestVerdictFallbacks: AnalysisResult = {
+  verdict: 'FALSE / CONTRADICTED CLAIM',
+  basis: 'Multiple fact-checkers confirmed the image was generated using AI synthesis tools.',
+  claim: 'Unverified rumor without confidence or advice fields.',
+  claim_text: 'Unverified rumor without confidence or advice fields.',
+  cleaned_text: 'Unverified rumor without confidence or advice fields.',
+  // missing verdict_key, confidence, advice, as_of, what_would_change
+};
+
+const mockTestRedFlagsHighlighting: AnalysisResult = {
+  verdict: 'contradicted',
+  verdict_key: 'contradicted',
+  confidence: 0.95,
+  basis: 'This message uses urgency, fake authority, and explicit forwarding demands to spread false information.',
+  claim: 'URGENT! Share this immediately before government censors delete this post! Top doctors secret cure revealed!',
+  claim_text: 'URGENT! Share this immediately before government censors delete this post! Top doctors secret cure revealed!',
+  cleaned_text: 'URGENT! Share this immediately before government censors delete this post! Top doctors secret cure revealed!',
+  red_flags: [
+    {
+      tactic: 'urgency',
+      span: 'URGENT! Share this immediately',
+    },
+    {
+      tactic: 'forward_this_now',
+      span: 'before government censors delete this post',
+    },
+    {
+      tactic: 'fake_authority',
+      span: 'Top doctors secret cure',
+    },
+  ],
+};
+
+const mockTestUnknownTactic: AnalysisResult = {
+  verdict: 'misleading',
+  verdict_key: 'misleading',
+  confidence: 0.70,
+  basis: 'Message uses undocumented persuasion framing.',
+  claim: 'Scientists are hiding this unbelievable miracle discovery from everyone.',
+  claim_text: 'Scientists are hiding this unbelievable miracle discovery from everyone.',
+  cleaned_text: 'Scientists are hiding this unbelievable miracle discovery from everyone.',
+  red_flags: [
+    {
+      type: 'quantum_leap_claim',
+      text: 'unbelievable miracle discovery',
+    },
+  ],
+};
+
+const mockTestDiffViewSpans: AnalysisResult = {
+  verdict: 'contradicted',
+  verdict_key: 'contradicted',
+  confidence: 0.94,
+  basis: 'Comparing budget numbers against official council records confirms severe fabrication and exaggeration.',
+  claim: 'The city council allocated $500 million for private luxury yachts last Tuesday.',
+  claim_text: 'The city council allocated $500 million for private luxury yachts last Tuesday.',
+  cleaned_text: 'The city council allocated $500 million for private luxury yachts last Tuesday.',
+  mutations: ['fabrication', 'exaggeration'],
+  diff_spans: [
+    {
+      start: 27,
+      end: 39,
+      type: 'exaggeration',
+      span: '$500 million',
+      note: 'Actual budget allocation was $5 million for public harbor repairs.',
+    },
+    {
+      start: 44,
+      end: 65,
+      type: 'fabrication',
+      span: 'private luxury yachts',
+      note: 'No yachts were purchased; funds were assigned to municipal ferry maintenance.',
+    },
+  ],
+  verified_fact: {
+    text: 'City Council approved $5 million in municipal funds strictly for public ferry dock repairs.',
+    summary: 'Public ferry repairs budgeted at $5M.',
+    evidence_ids: ['E1', 'E2'],
+  },
+  sources: [
+    {
+      id: 'E1',
+      url: 'https://citycouncil.example.gov/minutes',
+      title: 'Official City Council Meeting Minutes',
+      publisher: 'City Gazette',
+      date: '2026-10-02',
+      tier: 'T1',
+      relation: 'supports',
+      snippet: 'Approved item 4B: $5,000,000 for public ferry dock maintenance.',
+    },
+    {
+      id: 'E2',
+      url: 'https://localnews.example.com/harbor-repairs',
+      title: 'Harbor Repair Budget Approved',
+      publisher: 'Local Tribune',
+      date: '2026-10-03',
+      tier: 'T3',
+      relation: 'supports',
+      snippet: 'Council votes 7-2 to fund harbor dock repairs.',
+    },
+  ],
+};
+
+const mockTestDiffViewNoFact: AnalysisResult = {
+  verdict: 'unverifiable',
+  verdict_key: 'unverifiable',
+  confidence: 0.40,
+  basis: 'No factual consensus or verified statement exists for this claim.',
+  claim: 'Unconfirmed reports of rare animal sighting in central park.',
+  claim_text: 'Unconfirmed reports of rare animal sighting in central park.',
+  cleaned_text: 'Unconfirmed reports of rare animal sighting in central park.',
+  mutations: ['reframing'],
+  diff_spans: [],
+  verified_fact: null,
+};
+
+const mockTestSourcesUnrelatedToggle: AnalysisResult = {
+  verdict: 'supported',
+  verdict_key: 'supported',
+  confidence: 0.90,
+  basis: 'Health advisory verified with official CDC release.',
+  claim: 'CDC issues seasonal health protocols advisory for autumn.',
+  claim_text: 'CDC issues seasonal health protocols advisory for autumn.',
+  cleaned_text: 'CDC issues seasonal health protocols advisory for autumn.',
+  sources: [
+    {
+      id: 'E1',
+      title: 'Official Health Advisory',
+      publisher: 'CDC',
+      url: 'https://cdc.gov/advisory',
+      date: '2026-10-01',
+      tier: 'T1',
+      relation: 'supports',
+      snippet: 'Recommended health protocols for seasonal flu.',
+    },
+    {
+      id: 'E2',
+      title: 'General Wikipedia Article on Viruses',
+      publisher: 'Wikipedia',
+      url: 'https://wikipedia.org/wiki/Virus',
+      date: '2026-09-01',
+      tier: 4,
+      relation: 'unrelated',
+      snippet: 'A virus is a submicroscopic infectious agent that replicates inside living cells.',
+    },
+    {
+      id: 'E3',
+      title: 'Archived Weather Report',
+      publisher: 'Weather History',
+      url: 'https://weather.example.com/archive',
+      date: '2026-08-15',
+      tier: 'T4',
+      relation: 'neutral',
+      snippet: 'Temperatures averaged 72°F in August.',
+    },
+  ],
+};
+
+const mockTestSourcesEmpty: AnalysisResult = {
+  verdict: 'unverifiable',
+  verdict_key: 'unverifiable',
+  confidence: 0.30,
+  basis: 'No external web or database references were found matching this input text.',
+  claim: 'An obscure claim with zero external source references.',
+  claim_text: 'An obscure claim with zero external source references.',
+  cleaned_text: 'An obscure claim with zero external source references.',
+  sources: [],
+};
+
 export const MOCK_EXAMPLES: ExampleItem[] = [
+  {
+    id: 'test-contradicted',
+    title: '[VerdictCard] Proven False + Wealth Tax',
+    verdict: 'contradicted',
+    snippet: 'Tests Contradicted styling, 92% confidence pill, Don\'t forward advice.',
+    claim_text: mockTestContradicted.claim_text || '',
+    result: mockTestContradicted,
+  },
+  {
+    id: 'test-recycled-news',
+    title: '[VerdictCard] Recycled / Old News Banner',
+    verdict: 'misleading',
+    snippet: 'Tests Recycled Claim alert chip and Misleading theme.',
+    claim_text: mockTestRecycledNews.claim_text || '',
+    result: mockTestRecycledNews,
+  },
+  {
+    id: 'test-disputed',
+    title: '[VerdictCard & Sources] Disputed + Conflicting Sources',
+    verdict: 'disputed',
+    snippet: 'Tests Disputed verdict, conflicting sources banner, opinion advice.',
+    claim_text: mockTestDisputed.claim_text || '',
+    result: mockTestDisputed,
+  },
+  {
+    id: 'test-verdict-fallbacks',
+    title: '[VerdictCard] Fallbacks & Missing Fields',
+    verdict: 'unverifiable',
+    snippet: 'Tests raw string verdict fallback, missing confidence, as_of, advice.',
+    claim_text: mockTestVerdictFallbacks.claim_text || '',
+    result: mockTestVerdictFallbacks,
+  },
+  {
+    id: 'test-redflags-highlighting',
+    title: '[RedFlags] Plain-Text Highlighting Spans',
+    verdict: 'contradicted',
+    snippet: 'Tests multi-tactic highlight mark tags on input claim text.',
+    claim_text: mockTestRedFlagsHighlighting.claim_text || '',
+    result: mockTestRedFlagsHighlighting,
+  },
+  {
+    id: 'test-redflags-unknown-tactic',
+    title: '[RedFlags] Unknown Tactic Fallback',
+    verdict: 'misleading',
+    snippet: 'Tests tactic explanation fallbacks for custom red flag types.',
+    claim_text: mockTestUnknownTactic.claim_text || '',
+    result: mockTestUnknownTactic,
+  },
+  {
+    id: 'test-diffview-spans',
+    title: '[DiffView] Side-by-Side Distortion & Anchors',
+    verdict: 'contradicted',
+    snippet: 'Tests diff_spans highlighting, fabrication/exaggeration chips, source links.',
+    claim_text: mockTestDiffViewSpans.claim_text || '',
+    result: mockTestDiffViewSpans,
+  },
+  {
+    id: 'test-diffview-no-fact',
+    title: '[DiffView] Missing Verified Fact Fallback',
+    verdict: 'unverifiable',
+    snippet: 'Tests fallback message when verified_fact statement is missing.',
+    claim_text: mockTestDiffViewNoFact.claim_text || '',
+    result: mockTestDiffViewNoFact,
+  },
+  {
+    id: 'test-sources-unrelated-toggle',
+    title: '[SourcesPanel] Unrelated Reference Toggle',
+    verdict: 'supported',
+    snippet: 'Tests tier sorting and expanding neutral/unrelated references.',
+    claim_text: mockTestSourcesUnrelatedToggle.claim_text || '',
+    result: mockTestSourcesUnrelatedToggle,
+  },
+  {
+    id: 'test-sources-empty',
+    title: '[SourcesPanel] Empty Sources Fallback',
+    verdict: 'unverifiable',
+    snippet: 'Tests empty sources panel state with tier legend.',
+    claim_text: mockTestSourcesEmpty.claim_text || '',
+    result: mockTestSourcesEmpty,
+  },
   {
     id: 'gazette-saturdays',
     title: 'All Saturdays are bank holidays',
@@ -331,9 +663,20 @@ export function mockCheckClaim(text: string): CheckClaimResponse {
     return MOCK_SEEN_BEFORE;
   }
 
-  // Match against known examples
+  const cleanInput = text.trim().toLowerCase();
+
+  // Match against known examples (exact or partial match)
   for (const ex of MOCK_EXAMPLES) {
-    if (text.trim() === ex.claim_text.trim()) {
+    const exClaim = (ex.claim_text || '').trim().toLowerCase();
+    const exTitle = (ex.title || '').trim().toLowerCase();
+    const exId = ex.id.toLowerCase();
+
+    if (
+      cleanInput === exClaim ||
+      cleanInput === exTitle ||
+      cleanInput === exId ||
+      (exClaim.length > 10 && cleanInput.includes(exClaim.substring(0, 15)))
+    ) {
       return {
         job_id: ex.id,
         from_cache: true,
@@ -378,13 +721,16 @@ const STAGE_DETAILS: Record<StageEvent['stage'], { text?: string; count?: number
 };
 
 export function mockOpenStream(
-  _id: string,
+  id: string,
   onEvent: (event: StageEvent) => void,
   onComplete: (result: AnalysisResult) => void,
   signal?: AbortSignal,
 ): void {
   let i = 0;
   const total = STAGE_LABELS.length;
+  const example = MOCK_EXAMPLES.find((e) => e.id === id);
+  const targetResult = example ? example.result : mockA;
+
   const interval = setInterval(() => {
     if (signal?.aborted) {
       clearInterval(interval);
@@ -392,7 +738,7 @@ export function mockOpenStream(
     }
     if (i >= total) {
       clearInterval(interval);
-      onComplete(mockA);
+      onComplete(targetResult);
       return;
     }
     const stageInfo = STAGE_LABELS[i];
@@ -412,3 +758,4 @@ export function mockOpenStream(
     signal.addEventListener('abort', () => clearInterval(interval), { once: true });
   }
 }
+
