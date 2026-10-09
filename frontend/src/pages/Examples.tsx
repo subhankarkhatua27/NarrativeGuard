@@ -1,66 +1,65 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, FileText } from 'lucide-react';
 import { getExamples } from '@/lib/api';
 import type { ExampleItem } from '@/lib/types';
+import { VERDICT_META, cut, keyOf } from '@/lib/ngHelpers';
 
 export default function Examples() {
-  const [examples, setExamples] = useState<ExampleItem[]>([]);
+  const [items, setItems] = useState<ExampleItem[] | null>(null);
 
   useEffect(() => {
+    let alive = true;
     getExamples()
-      .then(setExamples)
-      .catch(() => setExamples([]));
+      .then((r) => alive && setItems(r))
+      .catch(() => alive && setItems([]));
+    return () => {
+      alive = false;
+    };
   }, []);
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
-      <Link
-        to="/"
-        className="mb-6 inline-flex items-center gap-1 text-sm font-medium text-slate-600 transition hover:text-slate-900"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to check
-      </Link>
-      <h1 className="text-2xl font-bold text-slate-900">Example claims</h1>
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-12">
+      <h1 className="text-2xl font-bold tracking-tight text-slate-900">Example checks</h1>
       <p className="mt-2 text-sm text-slate-600">
-        See how NarrativeGuard breaks down real-world forwarded messages.
+        These are saved results. They work even when live analysis is offline.
       </p>
 
-      <div className="mt-6 space-y-4">
-        {examples.map((ex) => (
-          <Link
-            key={ex.id}
-            to={`/e/${ex.id}`}
-            className="group block rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-teal-300 hover:shadow-md"
-          >
-            <div className="flex items-start gap-3">
-              <FileText className="mt-0.5 h-5 w-5 shrink-0 text-teal-600" />
-              <div>
-                <div className="mb-1 flex items-center gap-2">
-                  <span
-                    className={`inline-block h-2 w-2 rounded-full ${
-                      ex.expected_verdict === 'contradicted'
-                        ? 'bg-red-500'
-                        : ex.expected_verdict === 'misleading'
-                          ? 'bg-amber-500'
-                          : ex.expected_verdict === 'too_new'
-                            ? 'bg-blue-500'
-                            : 'bg-slate-400'
-                    }`}
-                  />
-                  <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                    {(ex.expected_verdict || 'example').replace('_', ' ')}
-                  </span>
-                </div>
-                <h2 className="text-sm font-semibold text-slate-800 group-hover:text-teal-700">
-                  {ex.claim || ex.id}
-                </h2>
-              </div>
-            </div>
-          </Link>
-        ))}
-      </div>
+      {items === null && (
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-28 animate-pulse rounded-xl bg-slate-100" />
+          ))}
+        </div>
+      )}
+
+      {items !== null && items.length === 0 && (
+        <p className="mt-8 rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+          No examples yet.
+        </p>
+      )}
+
+      {items !== null && items.length > 0 && (
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          {items.map((ex) => {
+            const meta = VERDICT_META[keyOf(ex.result)];
+            return (
+              <Link
+                key={ex.id}
+                to={`/e/${ex.id}`}
+                className="group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-teal-300 hover:shadow-md"
+              >
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${meta.chip}`}>
+                  {meta.label}
+                </span>
+                <p className="mt-2 text-sm font-semibold text-slate-800 group-hover:text-teal-700">
+                  {cut(ex.claim || ex.result?.claim, 140) || `Example ${ex.id}`}
+                </p>
+                <p className="mt-1 text-xs text-teal-700">View result</p>
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

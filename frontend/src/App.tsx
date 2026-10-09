@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import Home from '@/pages/Home';
 import Result from '@/pages/Result';
+import SeenBefore from '@/pages/SeenBefore';
 import SavedExample from '@/pages/SavedExample';
 import Examples from '@/pages/Examples';
 import About from '@/pages/About';
@@ -12,6 +13,7 @@ function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Home />} />
+          <Route path="/r/new" element={<SeenBefore />} />
           <Route path="/r/:id" element={<Result />} />
           <Route path="/e/:id" element={<SavedExample />} />
           <Route path="/examples" element={<Examples />} />

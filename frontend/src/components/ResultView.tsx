@@ -3,6 +3,7 @@ import VerdictCard from './result/VerdictCard';
 import RedFlags from './result/RedFlags';
 import DiffView from './result/DiffView';
 import SourcesPanel from './result/SourcesPanel';
+import ShareTools from './ShareTools';
 
 interface ResultViewProps {
   result?: AnalysisResult | null;
@@ -31,6 +32,7 @@ export default function ResultView({ result, originalText }: ResultViewProps) {
       <RedFlags result={result} originalText={originalText} />
       <DiffView result={result} originalText={originalText} />
       <SourcesPanel result={result} />
+      <ShareTools result={result} />
     </div>
   );
 }

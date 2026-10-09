@@ -1,24 +1,49 @@
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { getExamples } from '@/lib/api';
+import type { ExampleItem } from '@/lib/types';
+import ResultView from '@/components/ResultView';
 
 export default function SavedExample() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams();
+  const [item, setItem] = useState<ExampleItem | null | undefined>(undefined);
+
+  useEffect(() => {
+    let alive = true;
+    getExamples()
+      .then((list) => alive && setItem(list.find((e) => String(e.id) === id) ?? null))
+      .catch(() => alive && setItem(null));
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+
+  if (item === undefined) {
+    return <p className="px-4 py-16 text-center text-sm text-slate-500">Loading example...</p>;
+  }
+
+  if (item === null || !item.result) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-16 text-center">
+        <p className="text-base font-semibold text-slate-700">This example could not be found.</p>
+        <Link to="/examples" className="mt-3 inline-block text-sm font-medium text-teal-700 underline">
+          Back to examples
+        </Link>
+      </div>
+    );
+  }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
-      <Link
-        to="/"
-        className="mb-6 inline-flex items-center gap-1 text-sm font-medium text-slate-600 transition hover:text-slate-900"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to check
-      </Link>
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-xl font-bold text-slate-900">Example: {id}</h1>
-        <p className="mt-2 text-sm text-slate-500">
-          The full example result page will be rendered here.
-        </p>
+    <div>
+      <div className="mx-auto max-w-4xl px-4 pt-6 sm:px-6">
+        <span className="inline-block rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+          Saved example, not a live check
+        </span>
+        <Link to="/examples" className="ml-3 text-xs font-medium text-teal-700 underline">
+          All examples
+        </Link>
       </div>
+      <ResultView result={item.result} />
     </div>
   );
 }
