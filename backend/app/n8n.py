@@ -9,7 +9,7 @@ logger = logging.getLogger("narrativeguard")
 
 UP_TTL = 30          # seconds to trust an "up" answer
 DOWN_TTL = 10        # seconds to trust a "down" answer
-HEALTH_TIMEOUT = 2.5
+HEALTH_TIMEOUT = 6.0
 
 _state = {"ok": None, "at": 0.0}
 _lock = asyncio.Lock()
@@ -29,14 +29,13 @@ def _fresh() -> bool:
     return time.monotonic() - _state["at"] < ttl
 
 
-async def is_up():
+async def is_up() -> bool:
     if _fresh():
-        return _state["ok"]
+        return bool(_state["ok"])
     async with _lock:
         if _fresh():                      # someone else refreshed it while we waited
-            return _state["ok"]
+            return bool(_state["ok"])
         ok = False
-                
         try:
             async with asyncio.timeout(HEALTH_TIMEOUT):          # hard deadline for the whole check
                 async with httpx.AsyncClient(timeout=HEALTH_TIMEOUT) as client:
@@ -44,8 +43,13 @@ async def is_up():
                         health_url(), headers={"ngrok-skip-browser-warning": "true"}
                     )
             ok = r.status_code == 200
-        except Exception:
+            if not ok:
+                logger.warning("n8n health check returned %s from %s", r.status_code, health_url())
+        except Exception as exc:
+            logger.warning("n8n health check failed: %r", exc)
             ok = False
+        _state["ok"], _state["at"] = ok, time.monotonic()
+        return ok
 
 
 def mark_down() -> None:
